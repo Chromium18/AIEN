@@ -4431,7 +4431,7 @@ local function dynAdd(newGroup)
 
     env.info(("AIEN.event_hit, S_EVENT_HIT, check2"))
 
-	coalition.addGroup(country.id[newCountry], Unit.Category[newCat], newGroup) -- QUIIIII
+	coalition.addGroup(country.id[newCountry], Unit.Category[newCat], newGroup) -- QUIIIII, problema con ID?
 
 	return newGroup
 
