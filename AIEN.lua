@@ -277,13 +277,13 @@ local dismountTeamsWest = { -- sum of all "p" should do 100, but whatever
         [3] = "Soldier M4",
         [4] = "Soldier M249",
     }},-- mixed is actually 3 rifle and 1 rpg      
-    ["RPGs"] = {id = "RPGs", p = 15, c = {
+    ["RPGs"] = {id = "RPGs", p = 7, c = {
         [1] = "Paratrooper RPG-16",
         [2] = "Paratrooper RPG-16",
         [3] = "Soldier M4",
         [4] = "Soldier M4",
     }},              
-    ["manpads"] = {id = "manpads", p = 10, c = {
+    ["manpads"] = {id = "manpads", p = 1, c = {
         [1] = "Stinger manpad",
         [2] = "Stinger manpad",
         [3] = "Soldier M4",
@@ -303,13 +303,13 @@ local dismountTeamsEast = { -- sum of all "p" should do 100, but whatever
         [3] = "Infantry AK ver3",
         [4] = "Infantry AK ver3",
     }},-- mixed is actually 3 rifle and 1 rpg      
-    ["RPGs"] = {id = "RPGs", p = 15, c = {
+    ["RPGs"] = {id = "RPGs", p = 7, c = {
         [1] = "Paratrooper RPG-16",
         [2] = "Paratrooper RPG-16",
         [3] = "Infantry AK ver2",
         [4] = "Infantry AK ver3",
     }},               
-    ["manpads"] = {id = "manpads", p = 10, c = {
+    ["manpads"] = {id = "manpads", p = 1, c = {
         [1] = "SA-18 Igla manpad",
         [2] = "SA-18 Igla manpad",
         [3] = "Infantry AK ver3",
@@ -4267,6 +4267,7 @@ local function dynAdd(newGroup)
 	local groupType = newGroup.category
 	local newCountry = ''
 	-- validate data
+
 	for countryId, countryName in pairs(country.name) do
 		if type(cntry) == 'string' then
 			cntry = cntry:gsub("%s+", "_")
@@ -4305,6 +4306,7 @@ local function dynAdd(newGroup)
 			newCat = 'AIRPLANE'
 		end
 	end
+
 	local typeName
 	if newCat == 'GROUND_UNIT' then
 		typeName = ' gnd '
@@ -4418,7 +4420,18 @@ local function dynAdd(newGroup)
 		newGroup.units[unitIndex].unitName = nil
 	end
 
-	coalition.addGroup(country.id[newCountry], Unit.Category[newCat], newGroup)
+    if AIEN_debugProcessDetail == true then
+        env.info(("AIEN.event_hit, S_EVENT_HIT, newCountry = " .. tostring(newCountry)))
+        env.info(("AIEN.event_hit, S_EVENT_HIT, newCat = " .. tostring(newCat)))
+        env.info(("AIEN.event_hit, S_EVENT_HIT, newGroup = " .. tostring(newGroup)))
+        env.info(("AIEN.event_hit, S_EVENT_HIT, country.id.newCountry = " .. tostring(country.id[newCountry]) ))
+        env.info(("AIEN.event_hit, S_EVENT_HIT, check1"))
+        env.info(("AIEN.event_hit, S_EVENT_HIT, Unit.Category[newCat] = " .. tostring(Unit.Category[newCat]) ))
+    end	
+
+    env.info(("AIEN.event_hit, S_EVENT_HIT, check2"))
+
+	coalition.addGroup(country.id[newCountry], Unit.Category[newCat], newGroup) -- QUIIIII
 
 	return newGroup
 
@@ -5311,7 +5324,7 @@ local function getGroupSkillNum(g)
 						for groupID,group in pairs(attr["group"]) do
 							if (group) then	
                                 if group.groupId == id then
-                                    env.info(("AIEN, getGroupSkillNum: group " .. tostring(group.name )))
+                                    --env.info(("AIEN, getGroupSkillNum: group " .. tostring(group.name )))
                                     local skLevel = 0
                                     local unitsCount = 0
                                 
@@ -5327,7 +5340,7 @@ local function getGroupSkillNum(g)
                                     
                                     if skLevel > 0 then
                                         local k =  math.floor((skLevel/unitsCount)*10)/10
-                                        env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(k)))
+                                        --env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(k)))
                                         return k
                                     else
                                         return 3
@@ -6023,62 +6036,69 @@ local function defineTroopsNumber(unit)
 end
 
 local function deployTroops(unit)
-
+	
     local _point = unit:getPoint()
     local _onboard = mountedDb[unit:getID()]
     local _coa = unit:getCoalition()
 
     local function deploy(team, num)
-        local isMortar = false
-        local _groupName = unit:getName() .. "_dismounted_" .. tostring(num)
-        local _group = {
-            ["visible"] = false,
-            ["hidden"] = false,
-            ["units"] = {},
-            ["name"] = _groupName,
-            ["task"] = {},
-        }
+        if team then
+            local isMortar = false
+            local _groupName = unit:getName() .. "_dismounted_" .. tostring(num)
+            local _group = {
+                ["visible"] = false,
+                ["hidden"] = false,
+                ["units"] = {},
+                ["name"] = _groupName,
+                ["task"] = {},
+            }
 
-        local _pos = _point
-        for _i, _soldier in ipairs(team) do
+            local _pos = _point
+            for _i, _soldier in ipairs(team) do
+                if contains(_soldier, "mortar") then
+                    isMortar = true
+                end            
 
-            if contains(_soldier, "mortar") then
-                isMortar = true
-            end            
+                local _angle = math.pi * 2 * (_i - 1) / #team
+                local _xOffset = math.cos(_angle) * 15 + num
+                local _yOffset = math.sin(_angle) * 15 + num
+                local _name = _groupName .. "_".. tostring(_i)
 
-            local _angle = math.pi * 2 * (_i - 1) / #team
-            local _xOffset = math.cos(_angle) * 15 + num
-            local _yOffset = math.sin(_angle) * 15 + num
-            local _name = _groupName .. "_".. tostring(_i)
-
-            _group.units[_i] = createUnit(_pos.x + _xOffset, _pos.z + _yOffset, _angle, _name, _soldier)
-        end
-
-
-        _group.category = Group.Category.GROUND;
-        _group.country = unit:getCountry();
-
-        local _spawnedGroup = Group.getByName(dynAdd(_group).name) -- cambia per rendere gruppo multiplo!!!
-
-        if _spawnedGroup then
-            local _enemyPos = findNearestEnemy(_coa, _point, infantrySearchDist)
-            if _enemyPos and isMortar == false then
-                orderInfantryToMoveToPoint(_spawnedGroup, _enemyPos)
+                _group.units[_i] = createUnit(_pos.x + _xOffset, _pos.z + _yOffset, _angle, _name, _soldier)
             end
 
-            mountedDb[unit:getID()] = nil
-            if AIEN_debugProcessDetail == true then
-                env.info(("AIEN.deployTroops units deployed for unit " .. tostring(unit:getName())))
-            end	
-            return _spawnedGroup
+
+            _group.category = Group.Category.GROUND;
+            _group.country = unit:getCountry();
+
+            local _spawnedGroup = Group.getByName(dynAdd(_group).name)
+
+            if _spawnedGroup then
+
+                local _enemyPos = findNearestEnemy(_coa, _point, infantrySearchDist)
+
+                if _enemyPos and isMortar == false then
+                    orderInfantryToMoveToPoint(_spawnedGroup, _enemyPos)
+                end
+
+                mountedDb[unit:getID()] = nil
+                if AIEN_debugProcessDetail == true then
+                    env.info(("AIEN.deployTroops units deployed for unit " .. tostring(unit:getName())))
+                end	
+                return _spawnedGroup
+            end
         end
     end
 
-    for _g, _team in ipairs(_onboard) do
-        deploy(_team, _g)
+    if _onboard then
+        for _g, _team in ipairs(_onboard) do
+            deploy(_team, _g)
+        end
+
+        infcarrierDb[unit:getID()] = defineTroopsNumber(unit)
     end
 
-    infcarrierDb[unit:getID()] = defineTroopsNumber(unit)
+
 
 end
 
@@ -6278,15 +6298,18 @@ local function groupMountTeam(group)
 end
 
 local function groupDeployTroop(group, comeback)
-
-    if group and group:isExist() == true and #group:getUnits() > 0 then
+    if group and group:isExist() == true and group:getUnits() and #group:getUnits() > 0 then
         local units = group:getUnits()
         for uId, uData in pairs(units) do
-            if mountedDb[uData:getID()] then
-                deployTroops(uData)
 
-                if comeback == true then
-                    timer.scheduleFunction(groupMountTeam, group, timer.getTime() + remountTime)
+            local id = uData:getID()
+            if id then
+                if mountedDb[uData:getID()] then
+                    deployTroops(uData)
+
+                    if comeback == true then
+                        timer.scheduleFunction(groupMountTeam, group, timer.getTime() + remountTime)
+                    end
                 end
             end
         end
@@ -6308,11 +6331,17 @@ local function groupCheckForManpad(group)
 	if group and group:isExist() then
 		local unitsWithTroops = getTroops(group)
 		if unitsWithTroops and #unitsWithTroops > 0 then
+            if AIEN_debugProcessDetail == true then
+                env.info(("AIEN.groupCheckForManpad, unitsWithTroops: " .. tostring(#unitsWithTroops) ))
+            end	
 			local manpadTeams = {}
 			for uId, uData in pairs(unitsWithTroops) do 
 				for _, teams in pairs(uData.t) do
 					for _, soldier in pairs(teams) do
 						if contains(soldier, "manpad") then
+                            if AIEN_debugProcessDetail == true then
+                                env.info(("AIEN.groupCheckForManpad, has manpads" ))
+                            end	
 							manpadTeams[uId] = uData.u
 						end
 					end
@@ -6326,6 +6355,9 @@ end
 local function groupDeployManpad(group) -- this won't trigger the deploy of any kind of troops, but only for the manpad team (if there)
 	if group and group:isExist() then
 		local manpadTeams = groupCheckForManpad(group)
+        if AIEN_debugProcessDetail == true then
+            env.info(("AIEN.groupDeployManpad, manpadTeams: " .. tostring(manpadTeams) ))
+        end	
 		if manpadTeams and next(manpadTeams) ~= nil then 
             if AIEN_debugProcessDetail == true then
                 env.info(("AIEN.groupDeployManpad, confirmed deployable manpads team" ))
@@ -7722,20 +7754,23 @@ local function populate_Db() -- this one is launched once at mission start and c
                                     end
 
 
-                                    local r = 8 -- aie_random(1,100)
-                                    env.info(("AIEN, populate_Db: random for " .. tostring(unit:getID()) .. ": " .. tostring(r) ))
+                                    local r = 6 -- aie_random(1,100)
+                                    --env.info(("AIEN, populate_Db: random for " .. tostring(unit:getName()) .. ": " .. tostring(r) ))
                                     local c = nil
+                                    local i = nil
                                     local lim = 0
                                     for tName, tData in pairs(refTbl) do
                                         if r > tData.p and tData.p > lim then
                                             c = tData.c
+                                            i = tData.id
                                             lim = tData.p
-                                            env.info(("AIEN, populate_Db: found for " .. tostring(unit:getID()) .. ": " .. tostring(tName) .. ", lim now " .. tostring(lim) ))
+                                            --env.info(("AIEN, populate_Db: found " .. tostring(i) ))
                                         end
                                     end
 
                                     if c then
                                         local curMount = mountedDb[unit:getID()] or {}
+                                        env.info(("AIEN, populate_Db: adding " .. tostring(i) .. " to " .. tostring(unit:getName()) ))
                                         curMount[#curMount+1] = c
                                         mountedDb[unit:getID()] = curMount
                                         
@@ -7746,7 +7781,6 @@ local function populate_Db() -- this one is launched once at mission start and c
                                 end
 
                                 local loadings = math.floor(people/4)
-                                env.info(("AIEN, populate_Db: loading for " .. tostring(un:getName()) .. ": " .. tostring(loadings) ))
                                 for i = 1, loadings do
                                     if infcarrierDb[un:getID()] >=4 then
                                         loadTeam(un)
@@ -8296,7 +8330,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 end								
                             end
 
-                            if shooter then
+                            if shooter and con then
                                 if AIEN_debugProcessDetail == true then
                                     env.info(("AIEN.event_hit, S_EVENT_HIT, shooter known"))
                                 end	
@@ -8306,9 +8340,10 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
 
                                 -- parameters identification
                                 s_detected , s_visible , s_lastTime , s_type , s_distance , s_lastPos , s_lastVel = con:isTargetDetected(shooter)
-                                
+
                                 o_cat, s_cat = shooter:getCategory()
                                 s_cls = getUnitClass(shooter)
+
 
                                 --[[ o_cat: 
                                     UNIT    1
@@ -8520,9 +8555,9 @@ local function event_birth(initiator)
                             local c = getGroupClass(gp)
                             local det, thr = getRanges(gp)
                             local s = getGroupSkillNum(gp)
-                            env.info(("AIEN, event_birth: s " .. tostring(s)))
+                            --env.info(("AIEN, event_birth: s " .. tostring(s)))
                             groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition(), detection = det, threat = thr, tasked = false, skill = s}
-                            env.info(("AIEN, event_birth: adding to groundgroupsDb " .. tostring(gp:getName() )))
+                            --env.info(("AIEN, event_birth: adding to groundgroupsDb " .. tostring(gp:getName() )))
                         end
                     end
                 end
@@ -8531,7 +8566,7 @@ local function event_birth(initiator)
                 if gp then
                     if not string.find(gp:getName(), AIEN_xcl_tag) then -- need all the "Group" loop thing due to the exclusion tag check					
                         local c = nil
-                        if gp:getUnits() then
+                        if gp:getUnits() and #gp:getUnits() > 0 then
                             for _, un in pairs(gp:getUnits()) do
                                 if un:hasAttribute("UAVs") then -- drone only
                                     c = "UAV"
