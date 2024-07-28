@@ -5244,7 +5244,11 @@ local function getUnitClass(unit)
 		local cat = "unknown"
 
 		if coa then
-            if unit:hasAttribute("Ground Units") then
+            if unit:hasAttribute("Air") then
+                cls = "ARBN"
+            elseif unit:hasAttribute("Ships") then
+                cls = "SHIP"
+            elseif unit:hasAttribute("Ground Units") then
                 if unit:hasAttribute("Tanks") then
                     cls = "MBT"
                 elseif unit:hasAttribute("Indirect fire") and not unit:hasAttribute("SS_missile") then
@@ -5280,10 +5284,6 @@ local function getUnitClass(unit)
                 else
                     cls = "UNKN"
                 end
-            elseif unit:hasAttribute("Air") then
-                cls = "ARBN"
-            elseif unit:hasAttribute("Ships") then
-                cls = "SHIP"
             end
             
             if AIEN_debugProcessDetail == true then
@@ -6327,7 +6327,10 @@ local function groupDeployManpad(group) -- this won't trigger the deploy of any 
 	if group and group:isExist() then
 		local manpadTeams = groupCheckForManpad(group)
 		if manpadTeams and next(manpadTeams) ~= nil then 
-			for _, manpads in pairs() do
+            if AIEN_debugProcessDetail == true then
+                env.info(("AIEN.groupDeployManpad, confirmed deployable manpads team" ))
+            end	
+			for _, manpads in pairs(manpadTeams) do
 				deployTroops(manpads)
                 timer.scheduleFunction(groupMountTeam, group, timer.getTime() + remountTime)			
 			end
@@ -8224,7 +8227,7 @@ end
 
 
 -- ## EVENT HANDLER FUNCTIONS
-local function event_hit(unit, shooter, weapon) -- this functions run eacht time a unit gets an hit. Unit only, no statics.
+local function event_hit(unit, shooter, weapon) -- this functions run eacht time a unit gets an hit. Unit only, no statics. That's basically the core for reactions
     if unit and reactions == true then
         local vehicle       = unit:hasAttribute("Vehicles")
         local infantry      = unit:hasAttribute("Infantry")
@@ -8294,34 +8297,35 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                             end
 
                             if shooter then
+                                if AIEN_debugProcessDetail == true then
+                                    env.info(("AIEN.event_hit, S_EVENT_HIT, shooter known"))
+                                end	
+
                                 -- revise a_pos
                                 a_pos = shooter:getPoint()
 
                                 -- parameters identification
                                 s_detected , s_visible , s_lastTime , s_type , s_distance , s_lastPos , s_lastVel = con:isTargetDetected(shooter)
                                 
-                                -- shooter category
-                                if s_visible then
-                                    --[[ o_cat: 
-                                        UNIT    1
-                                        WEAPON  2
-                                        STATIC  3
-                                        BASE    4
-                                        SCENERY 5
-                                        Cargo   6
-                                    --]]--                                        
-                                    
-                                    --[[ s_cat: 
-                                        AIRPLANE      = 0,
-                                        HELICOPTER    = 1,
-                                        GROUND_UNIT   = 2,
-                                        SHIP          = 3,
-                                        STRUCTURE     = 4
-                                    --]]--
+                                o_cat, s_cat = shooter:getCategory()
+                                s_cls = getUnitClass(shooter)
 
-                                    o_cat, s_cat = shooter:getCategory()
-                                    s_cls = getUnitClass(shooter)
-                                end
+                                --[[ o_cat: 
+                                    UNIT    1
+                                    WEAPON  2
+                                    STATIC  3
+                                    BASE    4
+                                    SCENERY 5
+                                    Cargo   6
+                                --]]--                                        
+                                
+                                --[[ s_cat: 
+                                    AIRPLANE      = 0,
+                                    HELICOPTER    = 1,
+                                    GROUND_UNIT   = 2,
+                                    SHIP          = 3,
+                                    STRUCTURE     = 4
+                                --]]--
                                 
                                 -- shooter is indirect fire
                                 if shooter:hasAttribute("Indirect fire") then
@@ -8336,6 +8340,11 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                         s_close = 1
                                     end
                                 end      
+
+                                --shooter is airborne
+                                if s_cls == "ARBN" then
+                                    groupDeployManpad(group)
+                                end
 
                                 -- shooter is in infantry range
                                 if a_pos and position and dismount == true then
@@ -8359,8 +8368,36 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                         s_fireMis = 1
                                     end
                                 end	
+                            else -- try to address things when the shooter is unknown, based on weapon and effects
+                                if AIEN_debugProcessDetail == true then
+                                    env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown"))
+                                end	 
+                                if weapon then
+                                    if w_cat then
+                                        --[[-- 
+                                            Weapon.Category
+                                            SHELL     0
+                                            MISSILE   1
+                                            ROCKET    2
+                                            BOMB      3
+                                        --]]--
+                                        if w_cat == 0 or w_cat == 2 then -- shooter is unknown, and the weapon is a shell or a rocket: artillery is possibile
+                                            s_indirect = 1
+                                            if AIEN_debugProcessDetail == true then
+                                                env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but arty fire possibile"))
+                                            end	 
+                                        elseif w_cat == 1 or w_cat == 3 then -- shooter is unknown, and the weapon is a missile or a bomb: airborne threat is possibile
+                                            s_cls = "ARBN"
+                                            groupDeployManpad(group)
+                                            if AIEN_debugProcessDetail == true then
+                                                env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but airborne fire possibile"))
+                                            end	 
+                                        end
+
+                                    end
+                                end
                             end
-                            
+
                             if AIEN_debugProcessDetail == true then
                                 env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", w_cat: " .. tostring(w_cat) ))
                                 env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_cat: " .. tostring(s_cat) ))
