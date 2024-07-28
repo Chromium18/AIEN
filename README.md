@@ -26,6 +26,8 @@ In the end, if you need a specific group or more to do NOT be altered by the scr
 Usage informations:
 - The script does not require any other script to run;
 - Load the script in a "do script file" trigger after at least 3 seconds from mission start;
+
+Notes:
 - The script does not need set-up or additional coding besides the user customization variables setup below;
 - It won't be properly compatible with any other script that try to change the AI behaviours for ground movers. It should be ok with IADS scripts;
 - It alter the ground groups behaviour and any change will effectively "broke" any other actions given by DCS or CA user when kicking in (and that's just normal and ok).
