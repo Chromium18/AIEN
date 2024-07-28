@@ -1,4 +1,4 @@
-# AIEN
+# AIEN - AI ENhancement script
 DCS World AI enhancement script for ground units
 
 This script is possible thanks to the existance of many other scripts that I had the opportunity to use as inspiration, or partial copy, or modification due to being publicy available.
