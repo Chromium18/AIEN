@@ -5334,6 +5334,7 @@ end
 
 local function getGroupSkillNum(g)
     local id = g:getID()
+    --env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(g:getName()) ))
 	for coalitionID,coalition in pairs(env.mission["coalition"]) do
 		for countryID,country in pairs(coalition["country"]) do
 			for attrID,attr in pairs(country) do
@@ -5342,7 +5343,7 @@ local function getGroupSkillNum(g)
 						for groupID,group in pairs(attr["group"]) do
 							if (group) then	
                                 if group.groupId == id then
-                                    --env.info(("AIEN, getGroupSkillNum: group " .. tostring(group.name )))
+                                    --env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(g:getName()).. " group found" ))
                                     local skLevel = 0
                                     local unitsCount = 0
                                 
@@ -5351,14 +5352,13 @@ local function getGroupSkillNum(g)
                                         if skTbl then
                                             skLevel = skLevel + skTbl.skillVal
                                             unitsCount = unitsCount + 1
+                                            --env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(skLevel) .. ", unit num " .. tostring(unitsCount) ))
                                         end
                                     end
 
-                                    
-                                    
                                     if skLevel > 0 then
                                         local k =  math.floor((skLevel/unitsCount)*10)/10
-                                        --env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(k)))
+                                        env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(k)))
                                         return k
                                     else
                                         return 3
@@ -5371,6 +5371,8 @@ local function getGroupSkillNum(g)
 			end
 		end
 	end	
+    --env.info(("AIEN, getGroupSkillNum: sklevel not retournable, going random"))
+    return aie_random(2,5)
 end
 
 local function getRanges(group)
@@ -5442,14 +5444,17 @@ local function getTroops(group)
 	if group and group:isExist() then
 		if group:getUnits() and #group:getUnits() > 0 then
 			local troopsTbl = {}
-			for id, unit in pairs(group:getUnits()) do
-				local mount = mountedDb[unit:getID()]
-				if mount then
-					troopsTbl[unit:getID()] {u = unit, t = mount}
+			for id, uData in pairs(group:getUnits()) do              
+				local mount = mountedDb[tostring(uData:getID())]
+				if mount and uData then
+					troopsTbl[uData:getID()] = {u = uData, t = mount}
 				end
 			end
 			
 			if troopsTbl and next(troopsTbl) ~= nil then
+                if AIEN_debugProcessDetail == true then
+                    env.info(("AIEN.getTroops, returning troopstbl for: " .. tostring(group:getName()) ))
+                end	
 				return troopsTbl
 			end
 		end
@@ -6348,9 +6353,9 @@ end
 local function groupCheckForManpad(group)
 	if group and group:isExist() then
 		local unitsWithTroops = getTroops(group)
-		if unitsWithTroops and #unitsWithTroops > 0 then
+		if unitsWithTroops and next(unitsWithTroops) ~= nil then
             if AIEN_debugProcessDetail == true then
-                env.info(("AIEN.groupCheckForManpad, unitsWithTroops: " .. tostring(#unitsWithTroops) ))
+                env.info(("AIEN.groupCheckForManpad, unitsWithTroops available" ))
             end	
 			local manpadTeams = {}
 			for uId, uData in pairs(unitsWithTroops) do 
@@ -6365,9 +6370,12 @@ local function groupCheckForManpad(group)
 					end
 				end
 			end
+
+            return manpadTeams
 			
 		end
 	end
+    return nil
 end
 
 local function groupDeployManpad(group) -- this won't trigger the deploy of any kind of troops, but only for the manpad team (if there)
@@ -7772,7 +7780,7 @@ local function populate_Db() -- this one is launched once at mission start and c
                                     end
 
 
-                                    local r = 6 -- aie_random(1,100)
+                                    local r = aie_random(1,100)
                                     --env.info(("AIEN, populate_Db: random for " .. tostring(unit:getName()) .. ": " .. tostring(r) ))
                                     local c = nil
                                     local i = nil
@@ -8471,7 +8479,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 end	                                  
                                 av_ac[9] = nil
                             end 
-                            if not a_pos then -- enemy position unknown
+                            if not a_pos or not s_detected then -- enemy position unknown
                                 if AIEN_debugProcessDetail == true then
                                     env.info(("AIEN.event_hit, S_EVENT_HIT, a_pos is nil, won't be able to move toward the enemy"))
                                 end	                                  
