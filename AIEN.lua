@@ -4258,7 +4258,10 @@ local function ground_buildWP(point, overRideForm, overRideSpeed)
 
 end
 
-local function dynAdd(newGroup)
+local function dynAdd(ng)
+
+    local newGroup = deepCopy(ng)
+
     local cntry = newGroup.country
 	if newGroup.countryId then
 		cntry = newGroup.countryId
@@ -4362,7 +4365,7 @@ local function dynAdd(newGroup)
         end
 
         if not unitData.skill then
-            newGroup.units[unitIndex].skill = 'Random'
+            newGroup.units[unitIndex].skill = 'Random' -- provide something here
         end
 
         if newCat == 'AIRPLANE' or newCat == 'HELICOPTER' then
@@ -4398,15 +4401,41 @@ local function dynAdd(newGroup)
         
         end
     end
-
-	if newGroup.route and not newGroup.route.points then
-		if not newGroup.route.points and newGroup.route[1] then
-			local copyRoute = newGroup.route
-			newGroup.route = {}
-			newGroup.route.points = copyRoute
-		end
-	end
+    if newGroup.route then
+        if newGroup.route and not newGroup.route.points then
+            if newGroup.route[1] then
+                local copyRoute = deepCopy(newGroup.route)
+                newGroup.route = {}
+                newGroup.route.points = copyRoute
+            end
+        end
+    else -- if aircraft and no route assigned. make a quick and stupid route so AI doesnt RTB immediately
+        --if newCat == 'AIRPLANE' or newCat == 'HELICOPTER' then
+            newGroup.route = {}
+            newGroup.route.points = {}
+            newGroup.route.points[1] = {}
+        --end
+    end
 	newGroup.country = newCountry
+
+    -- update and verify any self tasks
+    if newGroup.route and newGroup.route.points then 
+        --log:warn(newGroup.route.points)
+        for i, pData in pairs(newGroup.route.points) do
+            if pData.task and pData.task.params and pData.task.params.tasks and #pData.task.params.tasks > 0 then
+                for tIndex, tData in pairs(pData.task.params.tasks) do
+                    if tData.params and tData.params.action then  
+                        if tData.params.action.id == "EPLRS" then
+                            tData.params.action.params.groupId = newGroup.groupId
+                        elseif tData.params.action.id == "ActivateBeacon" or tData.params.action.id == "ActivateICLS" then 
+                            tData.params.action.params.unitId = newGroup.units[1].unitId
+                        end 
+                    end
+                end
+            end
+        
+        end
+    end
 
 	-- sanitize table
 	newGroup.groupName = nil
@@ -4419,17 +4448,6 @@ local function dynAdd(newGroup)
 	for unitIndex, unitData in pairs(newGroup.units) do
 		newGroup.units[unitIndex].unitName = nil
 	end
-
-    if AIEN_debugProcessDetail == true then
-        env.info(("AIEN.event_hit, S_EVENT_HIT, newCountry = " .. tostring(newCountry)))
-        env.info(("AIEN.event_hit, S_EVENT_HIT, newCat = " .. tostring(newCat)))
-        env.info(("AIEN.event_hit, S_EVENT_HIT, newGroup = " .. tostring(newGroup)))
-        env.info(("AIEN.event_hit, S_EVENT_HIT, country.id.newCountry = " .. tostring(country.id[newCountry]) ))
-        env.info(("AIEN.event_hit, S_EVENT_HIT, check1"))
-        env.info(("AIEN.event_hit, S_EVENT_HIT, Unit.Category[newCat] = " .. tostring(Unit.Category[newCat]) ))
-    end	
-
-    env.info(("AIEN.event_hit, S_EVENT_HIT, check2"))
 
 	coalition.addGroup(country.id[newCountry], Unit.Category[newCat], newGroup) -- QUIIIII, problema con ID?
 
@@ -4612,7 +4630,7 @@ if AIEN_io and AIEN_lfs then
 		end
 	end
 
-	function dumpTableGUAE(fname, tabledata, varInt)
+	function dumpTableAIEN(fname, tabledata, varInt)
 		
         if AIEN_lfs and AIEN_io then
             local fdir = AIEN_lfs.writedir() .. [[Logs\]] .. fname
@@ -6202,8 +6220,8 @@ local function extractTroops(unit)
                 end
 
                 if AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                    dumpTableGUAE("infcarrierDb.lua", infcarrierDb, "int")
-                    dumpTableGUAE("mountedDb.lua", mountedDb, "int")
+                    dumpTableAIEN("infcarrierDb.lua", infcarrierDb, "int")
+                    dumpTableAIEN("mountedDb.lua", mountedDb, "int")
                 end
 
             end
@@ -7826,10 +7844,10 @@ local function populate_Db() -- this one is launched once at mission start and c
 	end
 
     if AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-        dumpTableGUAE("groundgroupsDb.lua", groundgroupsDb, "int")
-        dumpTableGUAE("droneunitDb.lua", droneunitDb, "int")
-        dumpTableGUAE("infcarrierDb.lua", infcarrierDb, "int")
-        dumpTableGUAE("mountedDb.lua", mountedDb, "int")
+        dumpTableAIEN("groundgroupsDb.lua", groundgroupsDb, "int")
+        dumpTableAIEN("droneunitDb.lua", droneunitDb, "int")
+        dumpTableAIEN("infcarrierDb.lua", infcarrierDb, "int")
+        dumpTableAIEN("mountedDb.lua", mountedDb, "int")
     end
 	
 end
@@ -7864,7 +7882,7 @@ local function update_GROUND()
                 timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
                 -- debug steps
                 if AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                    dumpTableGUAE("groundgroupsDb.lua", groundgroupsDb, "int")
+                    dumpTableAIEN("groundgroupsDb.lua", groundgroupsDb, "int")
                 end
                 if AIEN_debugProcessDetail then
                     env.info(("AIEN, update_GROUND: phase A completed"))
@@ -7945,7 +7963,7 @@ local function update_ISR() -- basically clean old ISR data
                 timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
                 -- debug steps
                 if AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                    dumpTableGUAE("intelDb.lua", intelDb, "int")
+                    dumpTableAIEN("intelDb.lua", intelDb, "int")
                 end
                 if AIEN_debugProcessDetail then
                     env.info(("AIEN, update_ISR: fase B completed"))
@@ -7971,7 +7989,7 @@ local function update_ISR() -- basically clean old ISR data
             timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
             -- debug steps
             if AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                dumpTableGUAE("intelDb.lua", intelDb, "int")
+                dumpTableAIEN("intelDb.lua", intelDb, "int")
             end
             if AIEN_debugProcessDetail then
                 env.info(("AIEN, update_ISR: fase B skipped"))
@@ -7989,7 +8007,7 @@ local function update_DRONE()
                 timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
                 -- debug steps
                 if AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                    dumpTableGUAE("droneunitDb.lua", droneunitDb, "int")
+                    dumpTableAIEN("droneunitDb.lua", droneunitDb, "int")
                 end
                 if AIEN_debugProcessDetail then
                     env.info(("AIEN, update_DRONE: fase B completata"))
