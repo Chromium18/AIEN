@@ -6669,7 +6669,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill)
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
     if AIEN_debugProcessDetail then
-        env.info(("AIEN, ac_withdraw launched, move randomly"))
+        env.info(("AIEN, ac_withdraw launched, withdraw"))
     end    
     
     if group and ownPos then
@@ -6677,9 +6677,9 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill)
         for _, og in pairs(groundgroupsDb) do
             if og.coa == group:getCoalition() then
                 if og.group and og.group:isExist() == true then
-                    local p     = og.pos
-                    local td    = og.threat
-                    if p and td then
+                    local p     = og.sa.pos
+                    --local td    = og.threat
+                    if p then -- and td
                         -- within range
                         local d = getDist(p, ownPos)
                         if d and d < withrawDist and d > 2000 then
