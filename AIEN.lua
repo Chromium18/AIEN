@@ -61,7 +61,7 @@ local message_feed  = true 		-- true/false. If true, each relevant AI action sta
 
 
 -- User bug report: prior to report a bug, please try reproducing it with this variable set to "true"
-local AIEN_debugProcessDetail = true -- AIEN_debugProcessDetail or true
+local AIEN_debugProcessDetail = false -- AIEN_debugProcessDetail or true
 
 
 --####################################################################################################
