@@ -33,7 +33,7 @@ Usage informations:
 
 Purpose and limitations:
 The script does not want to provide a complete "automated ground war" thing: this is already in development by both ED and also by DSMC script by me. 
-In fact, this script is a part of the DSMC script, but still usable externally as standalone
+In fact, this script is a part of the DSMC script, but still usable externally as standalone.
 
 Suggestion, ideas:
 -- Please refer to the script GitHub project, you will find the project details to suggest modification, contribute with coding and else.
@@ -256,7 +256,7 @@ local skills = {
 	["Random"] = {aim_delay = 140, skillVal = 8},  
 }
 
--- used for define infantry teams carrier capacity by attribute. BEWARE: the table key are not "classes", are actual DCS attributes.
+-- used for define infantry teams carrier capacity by attribute. BEWARE: the table key are not "classes", are actual DCS attributes enum. Don't add "casual" things, stick to them. You can find a list here: https://wiki.hoggitworld.com/view/DCS_enum_attributes 
 local dismountCarriers = {
     ["Trucks"] = 16,    -- this should be handled as a 3 teams of 4 each
     ["APC"] = 8,        -- this should be handled as a 2 teams of 4 each
@@ -264,7 +264,7 @@ local dismountCarriers = {
 }
 
 -- used for define infantry teams composition. In the table, p is the probability from 1 to 100, c is the composition
-local dismountTeamsWest = { -- sum of all "p" should do 100, but whatever
+local dismountTeamsWest = { 
     ["rifle"] = {id = "rifle", p = 55, c = {
         [1] = "Soldier M4",
         [2] = "Soldier M4",
@@ -290,7 +290,7 @@ local dismountTeamsWest = { -- sum of all "p" should do 100, but whatever
     }},  
 }
 
-local dismountTeamsEast = { -- sum of all "p" should do 100, but whatever
+local dismountTeamsEast = { 
     ["rifle"] = {id = "rifle", p = 55, c = {
         [1] = "Infantry AK ver3",
         [2] = "Infantry AK ver2",
@@ -318,7 +318,9 @@ local dismountTeamsEast = { -- sum of all "p" should do 100, but whatever
 
 
 --## LINKED TABLES (or local if not available)
-local tblThreatsRange                   = nil
+
+
+local tblThreatsRange                   = nil  -- this is a foundamental table cause it holds the firing range of any units, but mostly artillery one! Since the required data aren't available in the mission env, it can be either ported by DSMC (if used) or manually prompted. For the latter, obviously, it require to be manually updated. 
 if EMBD then -- just for compatibility enhancement
     tblThreatsRange                = EMBD.tblThreatsRange
     for tId, tData in pairs(tblThreatsRange) do
@@ -3554,7 +3556,12 @@ else
     }
 end
 
+
+
 --###### UTIL FUNCTIONS ############################################################################
+
+-- all the below functions are basically elements used in other part of the code. Many of them are basically copy or modified copy of other useful code and script, 
+-- the credits list would be quite long but mostly mist, MOOSE, CTLD. When able I kept the original name even if slightly modified.
 
 local function escape_string(str)
     local replacements = {
@@ -3689,7 +3696,7 @@ local function vec3Check(vec3)
     end
 end
 
-local function aie_random(firstNum, secondNum) -- copied from mist random by Grimes
+local function aie_random(firstNum, secondNum)
     local lowNum, highNum
     if not secondNum then
         highNum = firstNum
@@ -3967,7 +3974,7 @@ local function vecdp(vec1, vec2)
 	return vec1.x*vec2.x + vec1.y*vec2.y + vec1.z*vec2.z
 end
 
-local function getNorthCorrection(gPoint)	--gets the correction needed for true north
+local function getNorthCorrection(gPoint)
 	local point = deepCopy(gPoint)
 	if not point.z then --Vec2; convert to Vec3
 		point.z = point.y
@@ -4456,6 +4463,10 @@ local function dynAdd(ng)
 end
 
 -- desanitized functions (if available), for logging, table printing and debug purposes
+
+-- You should never run DCS desanitized unless specifically knowing the risks. However, if you already do that, for debug purposes AIEN will take advantages of the available io and lfs
+-- to print out tables of the databases created in it.
+
 if AIEN_io and AIEN_lfs then
 	env.info(("AIEN loading desanitized additional function"))
 
@@ -4658,9 +4669,6 @@ if AIEN_io and AIEN_lfs then
 	env.info(("AIEN desanitized additional function loaded"))
 end
 
-
---###### UTIL FUNCTIONS ############################################################################
-
 local function getDist(point1, point2)
     if point1 and point2 then
         local xUnit = point1.x
@@ -4755,121 +4763,19 @@ end
 
 --###### CURRENT MISSION CONDITIONS ################################################################
 
--- road usage
-
+-- road usage. Easy: if it's raining, off-road is not allowed.
 if env.mission.weather.clouds.iprecptns > 0 then
     forceRoadUse = true
 end
 
 --###### GROUP AI QUERY FUNCTIONS ##################################################################
 
---[[
- ["plane_carrier"] = {},
- ["no_tail_trail"] = {},
- ["cord"] = {},
- ["ski_jump"] = {},
- ["catapult"] = {},
- ["low_reflection_vessel"] = {},
- ["AA_flak"] = {},
- ["AA_missile"] = {},
- ["Cruise missiles"] = { "Missiles", },
- ["Anti-Ship missiles"] = { "Missiles", },
- ["Missiles"] = { "Planes", },
- ["Fighters"] = { "Planes", "Battle airplanes", },
- ["Interceptors"] = { "Planes", "Battle airplanes", },
- ["Multirole fighters"] = { "Planes", "Battle airplanes", },
- ["Bombers"] = { "Planes", "Battle airplanes", },
- ["Battleplanes"] = { "Planes", "Battle airplanes", },
- ["AWACS"] = { "Planes", },
- ["Tankers"] = { "Planes", },
- ["Aux"] = { "Planes", },
- ["Transports"] = { "Planes", },
- ["Strategic bombers"] = { "Bombers", },
- ["UAVs"] = { "Planes", },
- ["Attack helicopters"] = {"Helicopters", },
- ["Transport helicopters"]   = {"Helicopters", },
- ["Planes"] = {"Air",},
- ["Helicopters"] = {"Air",},
- ["Cars"] = {"Unarmed vehicles",},
- ["Trucks"] = {"Unarmed vehicles",},
- ["Infantry"] = {"Armed ground units", "NonArmoredUnits"},
- ["Tanks"] = {"Armored vehicles","Armed vehicles","AntiAir Armed Vehicles","HeavyArmoredUnits",},
- ["Artillery"] = {"Armed vehicles","Indirect fire","LightArmoredUnits",},
- ["MLRS"] = {"Artillery",},
- ["IFV"] = {"Infantry carriers","Armored vehicles","Armed vehicles","AntiAir Armed Vehicles","LightArmoredUnits",},
- ["APC"] = {"Infantry carriers","Armored vehicles","Armed vehicles","AntiAir Armed Vehicles","LightArmoredUnits",},
- ["Fortifications"] = {"Armed ground units","AntiAir Armed Vehicles","HeavyArmoredUnits",},
- ["Armed vehicles"] = {"Armed ground units","Ground vehicles",},
- ["Static AAA"] = {"AAA", "Ground vehicles",},
- ["Mobile AAA"] = {"AAA", "Ground vehicles",},
- ["SAM SR"] = {"SAM elements",}, -- Search Radar
- ["SAM TR"] = {"SAM elements"}, -- Track Radar
- ["SAM LL"] = {"SAM elements","Armed Air Defence"},  -- Launcher
- ["SAM CC"] = {"SAM elements",}, -- Command Center
- ["SAM AUX"] = {"SAM elements",}, -- Auxilary Elements (not included in dependencies)
- ["SR SAM"] = {}, -- short range
- ["MR SAM"] = {}, -- medium range
- ["LR SAM"] = {}, -- long range
- ["SAM elements"] = {"Ground vehicles", "SAM related"}, --elements of composite SAM site
- ["IR Guided SAM"] = {"SAM"},
- ["SAM"] = {"SAM related", "Armed Air Defence", "Ground vehicles"}, --autonomous SAM unit (surveillance + guidance + launcher(s))
- ["SAM related"] = {"Air Defence"}, --all units those related to SAM
- ["AAA"] = {"Air Defence", "Armed Air Defence", "Rocket Attack Valid AirDefence",},
- ["EWR"] = {"Air Defence vehicles",},
- ["Air Defence vehicles"] = {"Air Defence","Ground vehicles",},
- ["MANPADS"] = {"IR Guided SAM","Infantry","Rocket Attack Valid AirDefence",},
- ["MANPADS AUX"] = {"Infantry","Rocket Attack Valid AirDefence","SAM AUX"},
- ["Unarmed vehicles"] = {"Ground vehicles","Ground Units Non Airdefence","NonArmoredUnits",},
- ["Armed ground units"] = {"Ground Units","Ground Units Non Airdefence",},
- ["Armed Air Defence"] = {}, --air-defence units those have weapon onboard (SAM or AAA)
- ["Air Defence"] = {"NonArmoredUnits"},
- ["Aircraft Carriers"] = {"Heavy armed ships",},
- ["Cruisers"] = {"Heavy armed ships",},
- ["Destroyers"] = {"Heavy armed ships",},
- ["Frigates"] = {"Heavy armed ships",},
- ["Corvettes"] = {"Heavy armed ships",},
- ["Heavy armed ships"] = {"Armed ships", "Armed Air Defence", "HeavyArmoredUnits",},
- ["Light armed ships"] = {"Armed ships","NonArmoredUnits"},
- ["Armed ships"] = {"Ships"},
- ["Unarmed ships"] = {"Ships","HeavyArmoredUnits",},
- ["Air"] = {"All","NonArmoredUnits",},
- ["Ground vehicles"] = {"Ground Units", "Vehicles"},
- ["Ships"] = {"All",},
- ["Buildings"] = {"HeavyArmoredUnits",},
- ["HeavyArmoredUnits"] = {},
- ["ATGM"] = {},
- ["Old Tanks"] = {},
- ["Modern Tanks"] = {},
- ["LightArmoredUnits"] = {"NonAndLightArmoredUnits",},
- ["Rocket Attack Valid AirDefence"] = {},
- ["Battle airplanes"] = {},
- ["All"] = {},
- ["Infantry carriers"] = {},
- ["Vehicles"] = {},
- ["Ground Units"] = {"All",},
- ["Ground Units Non Airdefence"] = {},
- ["Armored vehicles"] = {},
- ["AntiAir Armed Vehicles"] = {}, --ground vehicles those capable of effective fire at aircrafts
- ["Airfields"] = {},
- ["Heliports"] = {},
- ["Grass Airfields"] = {},
- ["Point"] = {},
- ["NonArmoredUnits"] = {"NonAndLightArmoredUnits",},
- ["NonAndLightArmoredUnits"] = {},
- ["human_vehicle"] = {}, -- player controlable vehicle
- ["RADAR_BAND1_FOR_ARM"] = {},
- ["RADAR_BAND2_FOR_ARM"] = {},
- ["Prone"] = {},
- ["DetectionByAWACS"] = {}, -- for navy\ground units with external target detection
- ["Datalink"] = {}, -- for air\navy\ground units with on-board datalink station
- ["CustomAimPoint"] = {}, -- unit has custom aiming point
- ["Indirect fire"] = {},
- ["Refuelable"] = {},
- ["Weapon"] = {"Shell", "Rocket", "Bomb", "Missile"},
- 
---]]--
+-- Below functions has been created to query ground groups for informations about them, most of them used in the key getSA functions that
+-- try to built the "situational awareness" of a group. When done, each time the FSM cycle goes to that group,  it register bunch of info 
+-- so that these would be fastly accessibile during reactions or decision making.
 
---## CAPABILITY CHECKS
+
+--## CAPABILITY CHECKS -- these exist to identify some key characteristics of the group.
 local function group_hasAttribute(group, attribute) -- group tbl, attribute string (reference on DCS attributes) 
     if group then		
         local units = group:getUnits()
@@ -4951,7 +4857,7 @@ local function group_hasSensors(group, sensor) -- group tbl, attribute string (r
 end
 
 
---## INFORMATIVE CHECKS
+--## INFORMATIVE CHECKS -- these are basic informative "get" functions
 local function groupStatus(group)
     if group and group:isExist() == true then
         local units = group:getUnits()
@@ -5332,7 +5238,7 @@ local function getUnitClass(unit)
 	end
 end
 
-local function getGroupSkillNum(g)
+local function getGroupSkillNum(g) -- important: this try to create an "average skill scoring number" that will be used a lot elsewhere, i.e. for defining reaction time or even the available reactions. AIEN does not handle well the "Random" skill value (cause DCS skill is not available in real time): for best purpose, you should define the skill value of your ground units in the ME.
     local id = g:getID()
     --env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(g:getName()) ))
 	for coalitionID,coalition in pairs(env.mission["coalition"]) do
@@ -5463,8 +5369,185 @@ local function getTroops(group)
 end
 
 
+--## AWARENESS CONSTRUCTION FOR FSM USE -- the core of the reaction decision making behaviour: this functions use the upper ones to try to built a virtual situational awareness, and also collect for faster access some key informations.
+local function getSA(group) -- built a situational awareness check
+    
+	if group and group:isExist() == true then
+		local sa = {}
 
---## BASIC STATE ACTION
+		-- derivable functions
+		sa.enInContact, sa.targets 	= hasTargets(group)
+		sa.loss 		            = groupHasLosses(group)
+		sa.dmg, sa.life, sa.str     = groupStatus(group)
+		sa.low_ammo 	            = groupLowAmmo(group)
+		sa.pos			            = getLeadPos(group)
+        sa.coa                      = group:getCoalition()
+        sa.det                      = groundgroupsDb[group:getID()]["detection"]
+        sa.rng                      = groundgroupsDb[group:getID()]["threat"]
+        sa.cls                      = groundgroupsDb[group:getID()]["class"]
+        sa.nearAlly                 = nil -- table {n = amount, p = nearest position, s = strength as life count}
+        sa.nearEnemy                = nil -- table {n = amount, p = nearest position, s = strength as life count}
+
+        if sa.pos and sa.coa then
+
+            -- fix potential det and range issue
+            if not sa.rng then
+                if sa.cls == "ARTY" then
+                    sa.rng = 15000
+                elseif sa.cls == "MLRS" then
+                    sa.rng = 30000
+                elseif sa.cls == "ATGM" then
+                    sa.rng = 4000
+                elseif sa.cls == "UAV" then
+                    sa.rng = 8000                
+                else
+                    sa.rng = 2000
+                end
+            end
+            if not sa.det then
+                if sa.cls == "ARTY" then
+                    sa.det = 2000
+                elseif sa.cls == "MLRS" then
+                    sa.det = 2000
+                elseif sa.cls == "ATGM" then
+                    sa.det = 4000
+                elseif sa.cls == "UAV" then
+                    sa.rng = 40000                
+                else
+                    sa.det = 2000
+                end
+            end 
+        
+            -- nearby allies (within proxyUnitsDistance)
+            local an = 0
+            local as = 0
+            local near_a = nil
+            local _volume = {
+                id = world.VolumeType.SPHERE,
+                params = {
+                    point = sa.pos,
+                    radius = proxyUnitsDistance,
+                },
+            }
+            local _search = function(_obj)
+                pcall(function()
+                    if _obj ~= nil and _obj:isExist() then
+                        local o_coa = _obj:getCoalition()
+                        local o_pos = _obj:getPosition().p
+                        local o_str = _obj:getLife()
+                        if o_coa and o_pos and o_str then
+                            if o_coa ~= 0 then -- skip neutral
+                                if o_coa == sa.coa then -- ally
+                                    local md = proxyUnitsDistance
+                                    local d = getDist(sa.pos, o_pos)
+                                    an = an + 1
+                                    as = as + o_str
+                                    if d < md then
+                                        md = d
+                                        near_a = o_pos
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+            world.searchObjects(Object.Category.UNIT, _volume, _search)	
+            if an and near_a and as then
+                sa.nearAlly = {n = an, p = near_a, s = as}
+            end
+
+            -- update intelDb
+            if sa.targets and sa.targets ~= {} then
+                for _, tgtData in pairs(sa.targets) do
+                    local tgt = tgtData.object
+                    if Object.getCategory(tgt) == 1 then
+                        if tgt and tgt:isExist() then
+                            local t_id = tgt:getID()
+                            local t_pos = tgt:getPosition().p
+                            local t_coa = tgt:getCoalition()
+                            local t_life = tgt:getLife()
+                            local t = math.floor(timer.getTime())
+                            local s = vecmag(tgt:getVelocity())
+
+                            local knownType = tgt.type
+                            local t_type = nil
+                            if knownType == true then
+                                t_type = tgt:getTypeName()
+                            else
+                                t_type = "unknown"
+                            end
+
+                            local ob_cat = Object.getCategory(tgt)
+                            local t_ucat = nil
+                            local t_scat = nil
+                            if ob_cat and ob_cat == 1 then
+                                t_ucat = tgt:getCategory()
+                            elseif ob_cat and ob_cat == 3 then
+                                t_scat = tgt:getCategory()
+                            end
+
+                            local ob_desc = tgt:getDesc()
+                            local t_attr = nil
+                            if ob_desc and ob_desc.attributes then
+                                t_attr = ob_desc.attributes
+                            end
+
+                            local t_cls = getUnitClass(tgt)
+                            intelDb[t_id] = {obj = tgt, pos = t_pos, coa = t_coa, life = t_life, record = t, speed = s, type = t_type, ucat = t_ucat, scat = t_scat, attr = t_attr, cls = t_cls}
+                        
+                        end
+                    end
+                end           
+            end        
+
+            -- nearby enemies (use combined intel source DBs) + update intelDb
+            local near_e = nil
+            local es = 0
+            local en = 0
+            local dist = nil
+            for iId, iData in pairs(intelDb) do
+                if iData.obj:isExist() then
+                    if iData.coa ~= sa.coa and iData.coa ~= 0 and (timer.getTime() - iData.record) < intelDbTimeout then
+                        local d = getDist(sa.pos, iData.pos)
+                        if d < proxyUnitsDistance then
+                            en = en + 1
+                            es = es + iData.life
+                            if d < proxyUnitsDistance then
+                                near_e = iData.pos
+                                dist = d
+                            end
+                        end                
+                    end
+                else
+                    intelDb[iId] = nil -- removing the non existing object anymore. Do this any available cycle of intelDb
+                end
+            end
+            if en and near_e and es then
+                sa.nearEnemy = {n = en, p = near_e, s = es, d = dist}
+            end
+
+            return sa
+        else
+            return false
+        end
+		
+	else
+		if AIEN_debugProcessDetail then
+			env.info(("AIEN, group doesn't exist"))
+		end	
+		return false
+	end
+end
+
+
+--###### GROUP AI COMMAND FUNCTIONS ################################################################
+
+-- Below functions has been created to give command to ground groups, from the most basic to the more advanced. 
+-- These functions are the core of the things that will be done by your units.
+
+
+--## BASIC STATE ACTION -- these are basic command for the group.
 local function groupGoQuiet(group)
     if group and group:isExist() == true then	
         local gController = group:getController()
@@ -5530,7 +5613,7 @@ local function groupPreventDisperse(group)
     end
 end
 
-local function groupSuppress(group)
+local function groupSuppress(group) -- quite important: provide random "suppression" effect by enabling the ROE "hold fire" for a limited amount of time that will depend from group skill
     if group and group:isExist() == true then
         local c = group:getController()
         if c then
@@ -5545,15 +5628,15 @@ local function groupSuppress(group)
                 c:setOption(AI.Option.Ground.id.ROE, 2)
             end
             if back then
-                timer.scheduleFunction(back, {}, timer.getTime() + s)
+                timer.scheduleFunction(back, {}, timer.getTime() + rt)
             end
         end
     end
 end 
 
 
---## MISSION ACTION
-local function groupfireAtPoint(var) 
+--## MISSION ACTION -- these are more advanced command for groups
+local function groupfireAtPoint(var)
     local group = var[1] -- groupTableCheck(var[1])
     if AIEN_debugProcessDetail == true then
         env.info(("AIEN, groupfireAtPoint group check"))
@@ -5621,7 +5704,6 @@ local function groupfireAtPoint(var)
         env.info(("AIEN, groupfireAtPoint, missing group"))        
     end
 end
-
 
 
 --## ROUTE AND PATHFINDING
@@ -5880,7 +5962,11 @@ local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, 
     end
 end
 
+
 --###### DISMOUNT FUNCTIONS ########################################################################
+
+-- This part of the code, basically modified from CTLD ones, handle the automatic troop dismount-remount behaviour.
+-- Those functions are maybe the most "delicate" of the code, so think about them at least three times before touching ;)
 
 local function createUnit(_x, _y, _angle, _n, _t)
 
@@ -6397,7 +6483,7 @@ local function groupDeployManpad(group) -- this won't trigger the deploy of any 
 end
 
 -- ## externally access command, by script
-function AIEN_groupDeploy(gName, remountVar)
+function AIEN_groupDeploy(gName, remountVar) -- this one is global, to provide any user to make a group manually dismount via script or trigger action (do script) if remountVar is true, the dismounted group will go back to its vehicle after about 10 mins.
     if gName and type(gName) == "string" then
         local g = Group.getByName(gName)
         if g then
@@ -6407,185 +6493,21 @@ function AIEN_groupDeploy(gName, remountVar)
 end
 
 
---## AWARENESS CONSTRUCTION FOR FSM USE
-local function getSA(group) -- built a situational awareness check
-    
-	if group and group:isExist() == true then
-		local sa = {}
-
-		-- derivable functions
-		sa.enInContact, sa.targets 	= hasTargets(group)
-		sa.loss 		            = groupHasLosses(group)
-		sa.dmg, sa.life, sa.str     = groupStatus(group)
-		sa.low_ammo 	            = groupLowAmmo(group)
-		sa.pos			            = getLeadPos(group)
-        sa.coa                      = group:getCoalition()
-        sa.det                      = groundgroupsDb[group:getID()]["detection"]
-        sa.rng                      = groundgroupsDb[group:getID()]["threat"]
-        sa.cls                      = groundgroupsDb[group:getID()]["class"]
-        sa.nearAlly                 = nil -- table {n = amount, p = nearest position, s = strength as life count}
-        sa.nearEnemy                = nil -- table {n = amount, p = nearest position, s = strength as life count}
-
-        if sa.pos and sa.coa then
-
-            -- fix potential det and range issue
-            if not sa.rng then
-                if sa.cls == "ARTY" then
-                    sa.rng = 15000
-                elseif sa.cls == "MLRS" then
-                    sa.rng = 30000
-                elseif sa.cls == "ATGM" then
-                    sa.rng = 4000
-                elseif sa.cls == "UAV" then
-                    sa.rng = 8000                
-                else
-                    sa.rng = 2000
-                end
-            end
-            if not sa.det then
-                if sa.cls == "ARTY" then
-                    sa.det = 2000
-                elseif sa.cls == "MLRS" then
-                    sa.det = 2000
-                elseif sa.cls == "ATGM" then
-                    sa.det = 4000
-                elseif sa.cls == "UAV" then
-                    sa.rng = 40000                
-                else
-                    sa.det = 2000
-                end
-            end 
-        
-            -- nearby allies (within proxyUnitsDistance)
-            local an = 0
-            local as = 0
-            local near_a = nil
-            local _volume = {
-                id = world.VolumeType.SPHERE,
-                params = {
-                    point = sa.pos,
-                    radius = proxyUnitsDistance,
-                },
-            }
-            local _search = function(_obj)
-                pcall(function()
-                    if _obj ~= nil and _obj:isExist() then
-                        local o_coa = _obj:getCoalition()
-                        local o_pos = _obj:getPosition().p
-                        local o_str = _obj:getLife()
-                        if o_coa and o_pos and o_str then
-                            if o_coa ~= 0 then -- skip neutral
-                                if o_coa == sa.coa then -- ally
-                                    local md = proxyUnitsDistance
-                                    local d = getDist(sa.pos, o_pos)
-                                    an = an + 1
-                                    as = as + o_str
-                                    if d < md then
-                                        md = d
-                                        near_a = o_pos
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end)
-            end
-            world.searchObjects(Object.Category.UNIT, _volume, _search)	
-            if an and near_a and as then
-                sa.nearAlly = {n = an, p = near_a, s = as}
-            end
-
-            -- update intelDb
-            if sa.targets and sa.targets ~= {} then
-                for _, tgtData in pairs(sa.targets) do
-                    local tgt = tgtData.object
-                    if Object.getCategory(tgt) == 1 then
-                        if tgt and tgt:isExist() then
-                            local t_id = tgt:getID()
-                            local t_pos = tgt:getPosition().p
-                            local t_coa = tgt:getCoalition()
-                            local t_life = tgt:getLife()
-                            local t = math.floor(timer.getTime())
-                            local s = vecmag(tgt:getVelocity())
-
-                            local knownType = tgt.type
-                            local t_type = nil
-                            if knownType == true then
-                                t_type = tgt:getTypeName()
-                            else
-                                t_type = "unknown"
-                            end
-
-                            local ob_cat = Object.getCategory(tgt)
-                            local t_ucat = nil
-                            local t_scat = nil
-                            if ob_cat and ob_cat == 1 then
-                                t_ucat = tgt:getCategory()
-                            elseif ob_cat and ob_cat == 3 then
-                                t_scat = tgt:getCategory()
-                            end
-
-                            local ob_desc = tgt:getDesc()
-                            local t_attr = nil
-                            if ob_desc and ob_desc.attributes then
-                                t_attr = ob_desc.attributes
-                            end
-
-                            local t_cls = getUnitClass(tgt)
-                            intelDb[t_id] = {obj = tgt, pos = t_pos, coa = t_coa, life = t_life, record = t, speed = s, type = t_type, ucat = t_ucat, scat = t_scat, attr = t_attr, cls = t_cls}
-                        
-                        end
-                    end
-                end           
-            end        
-
-            -- nearby enemies (use combined intel source DBs) + update intelDb
-            local near_e = nil
-            local es = 0
-            local en = 0
-            local dist = nil
-            for iId, iData in pairs(intelDb) do
-                if iData.obj:isExist() then
-                    if iData.coa ~= sa.coa and iData.coa ~= 0 and (timer.getTime() - iData.record) < intelDbTimeout then
-                        local d = getDist(sa.pos, iData.pos)
-                        if d < proxyUnitsDistance then
-                            en = en + 1
-                            es = es + iData.life
-                            if d < proxyUnitsDistance then
-                                near_e = iData.pos
-                                dist = d
-                            end
-                        end                
-                    end
-                else
-                    intelDb[iId] = nil -- removing the non existing object anymore. Do this any available cycle of intelDb
-                end
-            end
-            if en and near_e and es then
-                sa.nearEnemy = {n = en, p = near_e, s = es, d = dist}
-            end
-
-            return sa
-        else
-            return false
-        end
-		
-	else
-		if AIEN_debugProcessDetail then
-			env.info(("AIEN, group doesn't exist"))
-		end	
-		return false
-	end
-end
-
-
-
 
 --###### MISSION REACTIONS #########################################################################
 
--- gr, ownPos, tgtPos, resume, saTbl
+--[[ Reactions is probably the most important behaviour change you will notice using this scripts. Reactions are (currently) triggered only by an hit event on one of the group unit. 
+    Obvioulsy optimizable, the code structure basically works this way:
+    1. when the hit event happen, some info are gathered in the event function event_hit that will launch executeActions
+    2. the function executeActions basically will "try" to execute each of the below actions, in a priority order defined in the event_hit
+    3. before defining priorities, all these functions are "filtered" by group skills (less skilleg group won't have the most refined solutions) and prioritized by conditions and available informations
+    4. the first function that return as a "success" is then executed, and the behaviour take place.
 
-local function ac_nothing(group, ownPos, tgtPos, resume, sa, skill)
+    Side note: suppression, dismount (of all or only manpads) effect are NOT dependand to the scoring model and will take place in parallel.
+--]]--
+
+
+local function ac_nothing(group, ownPos, tgtPos, resume, sa, skill) -- self-explanatory
     -- does literally nothing
     if AIEN_debugProcessDetail then
         env.info(("AIEN, ac_nothing launched, return true with no actions"))
@@ -6593,7 +6515,7 @@ local function ac_nothing(group, ownPos, tgtPos, resume, sa, skill)
     return true
 end
 
-local function ac_disperse(group, ownPos, tgtPos, resume, sa, skill)
+local function ac_disperse(group, ownPos, tgtPos, resume, sa, skill) -- basically simply allow for dispersion
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -6610,7 +6532,7 @@ local function ac_disperse(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
-local function ac_panic(group, ownPos, tgtPos, resume, sa, skill)
+local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will make the group to run away randomly.. that mean sometimes even toward the enemy.
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -6663,7 +6585,7 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
-local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) 
+local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this will make the group to run away to the nearest allied ground group
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -6715,7 +6637,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
-local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) 
+local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will make the group to run toward the shooting enemy and open fire
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -6747,7 +6669,7 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
-local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) 
+local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- this will make the group to run looking cover in a nearby urban area
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -6865,7 +6787,7 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
-local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) 
+local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) -- this will make another ground group to come in support
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -6925,7 +6847,7 @@ local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
-local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) 
+local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) -- this will make the group to run into the effective range of an allied air defence group
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -6983,7 +6905,7 @@ local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
-local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill) 
+local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill) -- this will make an allied artillery in range to fire at enemy shooter position
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -7025,7 +6947,7 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
--- summary table
+-- summary tablem holds the "scoring model points" for each condition. This can be seen as a decision matrix for evaluate best reaction available.
 -- used for fast-filtering actions availability based on group leader skill. 
 -- It basically is an array, where the actions are listed in order of complexity. 
 -- This way, the skill could be converted into a number, and that number will became the maximum index available.
@@ -7717,14 +7639,17 @@ local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
     end
 end
 
---## DB CONSTRUCTION & HANDLING
+
+--###### DB CONSTRUCTION & HANDLING ################################################################
 
 --[[ DB structure
-each db element is added as this: [objectID] = {group = Group Object, class = Result of getGroupClass function, i = index in table}
-They're not array to speed up the object calls when needed, cause you can simply do a referencedDB[objectID] call w/o coding for table loop
-when a db is referred to a unit, to skip units loop in the group (i.e. droneunitDb), the "group" key is replaced by "unit"
+    each db element is added as this: [objectID] = {group = Group Object, class = Result of getGroupClass function, i = index in table}
+    They're not array to speed up the object calls when needed, cause you can simply do a referencedDB[objectID] call w/o coding for table loop
+    when a db is referred to a unit, to skip units loop in the group (i.e. droneunitDb), the "group" key is replaced by "unit"
 
-DBs are used mostly for FSM loops, that are needed to keep a low impact on the process (FSM 1st level will loop db's, while FSM 2nd level will loop each entry one every second).
+    DBs are used mostly for FSM loops, that are needed to keep a low impact on the process (FSM 1st level will loop db's, while FSM 2nd level will loop each entry one every phaseCycleTimer timer (default 0.2 seconds)).
+    Not all the DBs are used in loops, some are only event-related like the ones used for dismount options.
+
 ]]--
 
 local function populate_Db() -- this one is launched once at mission start and collect everything relevant that is already there.
@@ -7860,7 +7785,17 @@ local function populate_Db() -- this one is launched once at mission start and c
 	
 end
 
--- ## FINITE STATE MACHINE LOOP
+
+--###### FINITE STATE MACHINE LOOP #################################################################
+
+--[[ FSM is the key element that allow this script to be as lightweight as possibile (for my low skills), cause basically make all the recurring functions to run each every "n" time instead of all-together at once every second. 
+    There are 2 levels of FSM:
+    - 1st level is the "bigger" one that is divided in phases: each phase update a DB table, plus a fourth one that handle the artillery groups fire missions.
+    - 2nd level is the "group cycle", that handle each database entry update.
+
+    Each time a 2nd level cycle is complete, the subsequent 1st level start and at the end it will simply re-start from the first. Check AIEN.performPhaseCycle() for 1st level cycle.
+
+]]--
 
 -- utils
 local function createIterator(t)
@@ -7880,6 +7815,8 @@ local function getNextKey(keys, currentKey)
     end
     return nil
 end
+
+-- 2ND LEVEL CYCLE FUNCTIONS
 
 -- SA update, PHASE "A"
 local function update_GROUND()
@@ -8207,7 +8144,7 @@ local function update_ARTY()
     end
 end
 
--- FINITE STATE MACHINE LOOP
+-- 1ST LEVEL CYCLE FUNCTIONS
 
 function AIEN.changePhase()
     if PHASE == "Initialization" then -- udpate terrain data
@@ -8286,7 +8223,11 @@ function AIEN.performPhaseCycle()
 end
 
 
--- ## EVENT HANDLER FUNCTIONS
+
+--###### EVENT HANDLER FUNCTIONS ###################################################################
+
+-- I believe this is self explanatory. Still, the event_hit function holds a lot on reactions and decision making. I'm sorry if it appear confuse, but currently it fits my condition XD.
+
 local function event_hit(unit, shooter, weapon) -- this functions run eacht time a unit gets an hit. Unit only, no statics. That's basically the core for reactions
     if unit and reactions == true then
         local vehicle       = unit:hasAttribute("Vehicles")
@@ -8627,8 +8568,9 @@ local function event_dead(initiator)
     end
 end
 
--- EVENTS HANDLING CALLS
-AIEN.eventHandler = {} -- define event based real time unit reactions
+--## EVENTS HANDLING CALLS
+
+AIEN.eventHandler = {} -- define event based real time unit reactions. I prefer to have 1 single handler that then will route itself on the right directions event based.
 function AIEN.eventHandler:onEvent(event)	
 
     if event.id == world.event.S_EVENT_HIT then 
