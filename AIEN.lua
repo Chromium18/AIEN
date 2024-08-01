@@ -253,7 +253,7 @@ local skills = {
     ["High"] = {aim_delay = 130, skillVal = 10},
     ["Good"] = {aim_delay = 150, skillVal = 6},
     ["Excellent"] = {aim_delay = 110, skillVal = 12},   
-	["Random"] = {aim_delay = 140, skillVal = 8},  
+	["Random"] = {aim_delay = 140, skillVal = 8},  -- skill val is NOT used in this case, it's replaced by a randomness.
 }
 
 -- used for define infantry teams carrier capacity by attribute. BEWARE: the table key are not "classes", are actual DCS attributes enum. Don't add "casual" things, stick to them. You can find a list here: https://wiki.hoggitworld.com/view/DCS_enum_attributes 
@@ -5265,7 +5265,11 @@ local function getGroupSkillNum(g) -- important: this try to create an "average 
                                     for unitID, unit in pairs(group["units"]) do
                                         local skTbl = skills[unit.skill]
                                         if skTbl then
-                                            skLevel = skLevel + skTbl.skillVal
+                                            local val = skTbl.skillVal
+                                            if unit.skill == "Random" then
+                                                val = aie_random(4,12)
+                                            end
+                                            skLevel = skLevel + val
                                             unitsCount = unitsCount + 1
                                             --env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(skLevel) .. ", unit num " .. tostring(unitsCount) ))
                                         end
@@ -5273,7 +5277,9 @@ local function getGroupSkillNum(g) -- important: this try to create an "average 
 
                                     if skLevel > 0 then
                                         local k =  math.floor((skLevel/unitsCount)*10)/10
-                                        env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(k)))
+                                        if AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN, getGroupSkillNum: skLevel " .. tostring(k)))
+                                        end
                                         return k
                                     else
                                         return 3
