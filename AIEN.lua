@@ -56,7 +56,7 @@ local dismount 		= true 		-- true/false. //BEWARE: CAN AFFECT PERFORMANCES ON LO
 
 
 -- User advanced customization
-AIEN_xcl_tag		= "XCL" 	-- string, global. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed. Any ground group with this 'tag' in its group name won't get AI enhancement behaviour, regardless of its coalition 
+AIEN_xcl_tag		= "XCL" 	-- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed. Any ground group with this 'tag' in its group name won't get AI enhancement behaviour, regardless of its coalition 
 local message_feed  = true 		-- true/false. If true, each relevant AI action starting will also create a trigger message feedback for its coalition
 
 
@@ -4761,6 +4761,15 @@ local function getReactionTime(avg_skill)
     end
 end
 
+local function groupAllowedForAI(group)
+    if group and group:isExist() and group:getUnits() and #group:getUnits() > 0 then
+        if contains(group:getName(), AIEN_xcl_tag) then
+            return false
+        end
+    end
+    return true
+end
+
 --###### CURRENT MISSION CONDITIONS ################################################################
 
 -- road usage. Easy: if it's raining, off-road is not allowed.
@@ -6599,7 +6608,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
         for _, og in pairs(groundgroupsDb) do
             if og.coa == group:getCoalition() then
                 if og.group and og.group:isExist() == true then
-                    local p     = og.sa.pos
+                    local p     = sa.pos
                     --local td    = og.threat
                     if p then -- and td
                         -- within range
@@ -7590,7 +7599,7 @@ local actionsDb = {
 
 -- the functions that handles the reactions, using priorities
 local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
-    if gr and gr:isExist() then
+    if gr and gr:isExist() and ownPos and tgtPos and actTbl and saTbl and skill then
         if actTbl and #actTbl>0 then
             for aId, aData in pairs(actTbl) do 
                 for _, dbActData in pairs(actionsDb) do
@@ -7633,7 +7642,13 @@ local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
         end
     else
         if AIEN_debugProcessDetail == true then
-            env.info(("AIEN.executeActions, gr missing"))
+            env.info(("AIEN.executeActions error, missing one or more variables:"))
+            env.info(("AIEN.executeActions error: " .. tostring(gr)))
+            env.info(("AIEN.executeActions error: " .. tostring(ownPos)))
+            env.info(("AIEN.executeActions error: " .. tostring(tgtPos)))
+            env.info(("AIEN.executeActions error: " .. tostring(actTbl)))
+            env.info(("AIEN.executeActions error: " .. tostring(saTbl)))
+            env.info(("AIEN.executeActions error: " .. tostring(skill)))
         end
         return false
     end
@@ -7659,7 +7674,7 @@ local function populate_Db() -- this one is launched once at mission start and c
 	for i = 0, 2 do
 		for _, gp in pairs(coalition.getGroups(i), 2) do -- ground only
 			if gp:isExist() then
-				if not string.find(gp:getName(), AIEN_xcl_tag) then
+				if groupAllowedForAI(gp) == true then
                     local c = getGroupClass(gp)
                     local gpcoa = gp:getCoalition()
                     -- classes reminder from getGroupClass:
@@ -7755,7 +7770,7 @@ local function populate_Db() -- this one is launched once at mission start and c
 	for i = 0, 2 do
 		for _, gp in pairs(coalition.getGroups(i), 0) do -- airplane only
 			if gp:isExist() then
-				if not string.find(gp:getName(), AIEN_xcl_tag) then
+				if groupAllowedForAI(gp) == true then
                     local c = nil
 					if gp:getUnits() then
 						for _, un in pairs(gp:getUnits()) do
@@ -8022,9 +8037,9 @@ local function update_ARTY()
                     end
                     if gData.coa == 1 and redAI == false then
                         AI_consent = false
-                    end                    
+                    end                
 
-                    if AI_consent == true then
+                    if AI_consent == true and groupAllowedForAI(gData.group) == true then -- both coalition AI should be on and group exclusion tag shouldn't be there
                         local remove = false
                         if gData.group then
                             if gData.group and gData.group:isExist() == true and gData.sa and gData.tasked == false then
@@ -8243,7 +8258,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
         if unit and Object.getCategory(unit) == 1 and ground_unit then
             local group     = unit:getGroup()
             
-            if group and group:isExist() then
+            if group and group:isExist() and groupAllowedForAI(group) == true then -- filtering both for existance and for exclusion tag being not there
             
                 if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
                     
@@ -8517,7 +8532,7 @@ local function event_birth(initiator)
             if not initiator:hasAttribute("Infantry") then
                 local gp = initiator:getGroup()
                 if gp then
-                    if not string.find(gp:getName(), AIEN_xcl_tag) then
+                    if groupAllowedForAI(gp) == true then
                         if not groundgroupsDb[gp:getID()] then -- since event is launched for each unit, this prevent re-adding the same group multiple times
                             local c = getGroupClass(gp)
                             local det, thr = getRanges(gp)
@@ -8531,7 +8546,7 @@ local function event_birth(initiator)
             elseif objCat == 1 and subCat == 0 then -- unit, plane unit (drone)	
                 local gp = initiator:getGroup() 
                 if gp then
-                    if not string.find(gp:getName(), AIEN_xcl_tag) then -- need all the "Group" loop thing due to the exclusion tag check					
+                    if groupAllowedForAI(gp) == true then -- need all the "Group" loop thing due to the exclusion tag check					
                         local c = nil
                         if gp:getUnits() and #gp:getUnits() > 0 then
                             for _, un in pairs(gp:getUnits()) do
