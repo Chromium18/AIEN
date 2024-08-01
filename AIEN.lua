@@ -6571,6 +6571,7 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
         local delay = getReactionTime(skill)
         timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)          
 
+        --[[
         if resume then
             -- check if there's a route to be followed once action end
             local destination = nil
@@ -6593,6 +6594,7 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
             end
             timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(240, 900))     
         end
+        --]]
 
         return true
     else
@@ -6637,6 +6639,30 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
             end
             local delay = getReactionTime(skill)
             timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
+
+            if resume then
+                -- check if there's a route to be followed once action end
+                local destination = nil
+                local points = getMEroute(group)
+                if points then
+                    local last = #points
+                    local data = points[last] 
+                    if data and type(data) == "table" then
+                        destination = { x = data.x, y = land.getHeight({x = data.x, y = data.y}), z = data.y}
+                    end
+                end
+                if not destination then
+                    destination = ownPos
+                end            
+                local funcresumeRoute = function()
+                    moveToPoint(group, destination, 200, 10)
+                end
+                if AIEN_debugProcessDetail == true then
+                    env.info(("AIEN, ac_withdraw group planning coming back"))
+                end
+                timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(420, 900))     
+            end
+
             return true
         else
             if AIEN_debugProcessDetail == true then
@@ -6674,6 +6700,30 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
         if dismount == true then
             groupDeployTroop(group, true)
         end
+
+        if resume then
+            -- check if there's a route to be followed once action end
+            local destination = nil
+            local points = getMEroute(group)
+            if points then
+                local last = #points
+                local data = points[last] 
+                if data and type(data) == "table" then
+                    destination = { x = data.x, y = land.getHeight({x = data.x, y = data.y}), z = data.y}
+                end
+            end
+            if not destination then
+                destination = ownPos
+            end            
+            local funcresumeRoute = function()
+                moveToPoint(group, destination, 200, 10)
+            end
+            if AIEN_debugProcessDetail == true then
+                env.info(("AIEN, ac_attack group planning coming back"))
+            end
+            timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(600, 900))     
+        end
+
         return true
 
     else
@@ -6774,7 +6824,31 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                         env.info(("AIEN, ac_coverBuildings group planned reaction"))
                     end
                     local delay = getReactionTime(skill)
-                    timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
+                    timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)    
+                    
+                    if resume then
+                        -- check if there's a route to be followed once action end
+                        local destination = nil
+                        local points = getMEroute(group)
+                        if points then
+                            local last = #points
+                            local data = points[last] 
+                            if data and type(data) == "table" then
+                                destination = { x = data.x, y = land.getHeight({x = data.x, y = data.y}), z = data.y}
+                            end
+                        end
+                        if not destination then
+                            destination = ownPos
+                        end            
+                        local funcresumeRoute = function()
+                            moveToPoint(group, destination, 200, 10)
+                        end
+                        if AIEN_debugProcessDetail == true then
+                            env.info(("AIEN, ac_coverBuildings group planning coming back to original destination"))
+                        end
+                        timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(420, 900))     
+                    end                    
+
                     return true
                 else
                     if AIEN_debugProcessDetail == true then
@@ -6897,13 +6971,36 @@ local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) -- this wil
 
         if bestPos and bestTd then 
             local funcDoAction = function()
-                moveToPoint(group, bestPos, bestTd*0.4, bestTd*0.1) 
+                moveToPoint(group, bestPos, bestTd*0.3, bestTd*0.05) 
             end
             if AIEN_debugProcessDetail == true then
                 env.info(("AIEN, ac_coverADS group planned reaction"))
             end
             local delay = getReactionTime(skill)
             timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
+
+            if resume then
+                -- check if there's a route to be followed once action end
+                local destination = nil
+                local points = getMEroute(group)
+                if points then
+                    local last = #points
+                    local data = points[last] 
+                    if data and type(data) == "table" then
+                        destination = { x = data.x, y = land.getHeight({x = data.x, y = data.y}), z = data.y}
+                    end
+                end
+                if not destination then
+                    destination = ownPos
+                end            
+                local funcresumeRoute = function()
+                    moveToPoint(group, destination, 200, 10)
+                end
+                if AIEN_debugProcessDetail == true then
+                    env.info(("AIEN, ac_coverADS group planning coming back"))
+                end
+                timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(420, 900))     
+            end
  
             return true
         else
@@ -7037,7 +7134,7 @@ local actionsDb = {
         ["name"] = "ac_panic",
         ["ac_function"] = ac_panic,
         ["message"] = "We're trying to escape fire%!",
-        ["resume"] = false,
+        ["resume"] = true,
         ["w_cat"] = { -- weapon category
             [0] = 0.3, -- shell
             [1] = 2, -- missile
@@ -7704,7 +7801,8 @@ local function populate_Db() -- this one is launched once at mission start and c
                     env.info(("AIEN, populate_Db: s " .. tostring(s)))
                     local det, thr = getRanges(gp)
                     if c then
-                        groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gpcoa, detection = det, threat = thr, tasked = false, skill = s}
+                        --local r = getMEroute(gp)
+                        groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gpcoa, detection = det, threat = thr, tasked = false, skill = s}  --, route = r
                         env.info(("AIEN, populate_Db: adding to groundgroupsDb " .. tostring(gp:getName() .. ", class " .. tostring(c) )))
                     else
                         env.info(("AIEN, populate_Db: skipping group due to unable to identify class " .. tostring(gp:getName() )))
@@ -8265,14 +8363,24 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
             local group     = unit:getGroup()
             
             if group and group:isExist() and groupAllowedForAI(group) == true then -- filtering both for existance and for exclusion tag being not there
-            
-                if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
-                    
-                    -- define suppression
-                    if armoured == false and suppression == true then
+                
+                -- suppression part
+                if shooter and armoured and suppression == true then
+                    local suppressEffects = true
+                    if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
+                        suppressEffects = false
+                    end
+                    if suppressEffects == true then
+                        if AIEN_debugProcessDetail == true then
+                            env.info(("AIEN.event_hit, S_EVENT_HIT, group is suppressed: " .. tostring(group:getName()) ))
+                        end		
                         groupSuppress(group)
                     end
+                end
 
+                -- reaction part
+                if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
+                    
                     if AIEN_debugProcessDetail == true then
                         env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) ))
                     end					
