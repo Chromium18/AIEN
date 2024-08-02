@@ -64,31 +64,10 @@ local message_feed  = true 		-- true/false. If true, each relevant AI action sta
 local AIEN_debugProcessDetail = false 
 
 
---####################################################################################################
---###### DO NOT CHANGE CODE BELOW HERE ###############################################################
---####################################################################################################
 
---###### CONFIG AND VARIABLES ########################################################################
-
---## MAIN VARIABLES
-
--- DSMC version of the script check: if already there due to DSMC version, the script won't be loaded.
-if AIEN then
-    env.info(("AIEN already there in another way, stopping"))
-    return
-end
-
---## GLOBAL GENERAL AIEN CONTENT TABLE
-AIEN                                	= {}
-
---## LOCAL GENERAL INFORMATIONS VARIABLES (mostly used for debug log and info)
-local ModuleName  						= "AIEN"
-local MainVersion 						= "0"
-local SubVersion 						= "9"
-local Build 							= "0107"
-local Date								= "2024.08.02"
-
---## LOCAL HIGH LEVEL VARIABLES
+--## LOCAL HIGH LEVEL VARIABLES ##
+-- changing the variable below is for fine customization, but it's not recommended cause it can change the code behaviour. 
+-- If you do so, please revert to original value and retry before reporting bugs.
 
 -- movement variables
 local outRoadSpeed                      = 8	                -- do *3.6 for km/h, cause DCS thinks in m/s	
@@ -117,7 +96,31 @@ local proxyBuildingDistance				= 4000              -- m, if buildings are whitin
 local proxyUnitsDistance                = 5000              -- m, if units are whitin this distance value, they are considered "close"
 local supportDistance					= 8000				-- m, maximum distance for evaluating support or cover movements when under attack
 local withrawDist                       = 15000             -- m, maximum distance for withdraw manouver nearby a friendly support unit
+    
 
+--####################################################################################################
+--###### DO NOT CHANGE CODE BELOW HERE ###############################################################
+--####################################################################################################
+
+--###### CONFIG AND VARIABLES ########################################################################
+
+--## MAIN VARIABLES
+
+-- DSMC version of the script check: if already there due to DSMC version, the script won't be loaded.
+if AIEN then
+    env.info(("AIEN already there in another way, stopping"))
+    return
+end
+
+--## GLOBAL GENERAL AIEN CONTENT TABLE
+AIEN                                	= {}
+
+--## LOCAL GENERAL INFORMATIONS VARIABLES (mostly used for debug log and info)
+local ModuleName  						= "AIEN"
+local MainVersion 						= "0"
+local SubVersion 						= "9"
+local Build 							= "0108"
+local Date								= "2024.08.02"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
