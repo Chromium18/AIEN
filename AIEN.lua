@@ -85,8 +85,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "0"
 local SubVersion 						= "9"
-local Build 							= "0104"
-local Date								= "2024.07.29"
+local Build 							= "0107"
+local Date								= "2024.08.02"
 
 --## LOCAL HIGH LEVEL VARIABLES
 
@@ -100,7 +100,7 @@ local rndFleeDistance		            = 2000 		        -- meters, reposition distan
 -- dismounted troops variables
 local droppedReposition                 = 80                -- if no enemy is identified, this is the distance where dismount group will reposition themselfs
 local remountTime                       = 600               -- time after which dismounted troops will try to go back to their original vehicle for remount, if commanded
-local infantryExtractDist                = 200              -- max distance from vehicle to troops to allow a group extraction
+local infantryExtractDist               = 200              -- max distance from vehicle to troops to allow a group extraction
 local infantrySearchDist                = 2000              -- max distance from vehicle to troops to allow a dismount group to run toward the enemies
 
 -- informative calls variables
