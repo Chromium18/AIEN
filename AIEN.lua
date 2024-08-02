@@ -167,14 +167,6 @@ end
 
 --## LOCAL DYNAMIC TABLES
 
---[[
-local tblActionsSet = { -- MUOVI DOPO LE FUNZIONI!!!
-    ["run_away"] = {skill = "Average", delay = 20, action = exe_run_away},
-	["get_cover"] = {skill = "Good", delay = 10, action = exe_get_cover},
-	["get_cover"] = {skill = "Good", delay = 10, action = exe_get_cover},
-}
---]]--
-
 local groundgroupsDb    = {} -- used for general purpose on groups command
 local droneunitDb       = {} -- used mostly for artillery control
 local intelDb           = {} -- used for any enemy assessment evaluation. The getSA function is used for populating the db
