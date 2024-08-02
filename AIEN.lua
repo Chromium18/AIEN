@@ -110,10 +110,7 @@ local outAmmoLowLevel                   = 0.5		        -- factor on total amount
 local intelDbTimeout                    = 1800              -- seconds. Used to cancel intelDb entries for units (not static!), when the time of the contact gathering is more than this value
 local artyFireLastContactThereshold     = 300               -- seconds, max amount of time since last contac to consider an arty target ok
 local taskTimeout                       = 360               -- seconds after which a tasked group is removed from the database
-local rndMinRT_xper                     = 1                 -- seconds counted as minimum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
-local rndMacRT_xper                     = 5                 -- seconds counted as maximum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
 local disperseActionTime				= 120		        -- seconds
-local stupidIndex                       = 1                 -- used to avoid infinite loops
 
 -- SA evaluation variables
 local proxyBuildingDistance				= 4000              -- m, if buildings are whitin this distance value, they are considered "close"
@@ -145,6 +142,9 @@ local phase_index                   	= nil
 local phase_keys                        = {}
 local phaseCycleTimer                   = 0.2               -- seconds, used by FSM. Define how much time pass between a loop entry calculation and another. You might want to reduce it further or if you feel DCS being "slow" you can raise up to 1.0 second. 
 local forceRoadUse                      = nil               -- this variable is automatically handled. It's used for every planned movement, being dependant by obstacle numbers and also by weather
+local rndMinRT_xper                     = 1                 -- seconds counted as minimum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
+local rndMacRT_xper                     = 5                 -- seconds counted as maximum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
+local stupidIndex                       = 1                 -- used to avoid infinite loops
 
 --AI processing timers
 local underAttack                       = {}                -- used when a group has been attacked, it keeps "tactical" tasking off for 10 mins leaving room for "reaction" decision making
