@@ -61,7 +61,7 @@ local message_feed  = true 		-- true/false. If true, each relevant AI action sta
 
 
 -- User bug report: prior to report a bug, please try reproducing it with this variable set to "true"
-local AIEN_debugProcessDetail = false -- AIEN_debugProcessDetail or true
+local AIEN_debugProcessDetail = false 
 
 
 --####################################################################################################
@@ -94,9 +94,8 @@ local Date								= "2024.07.29"
 local outRoadSpeed                      = 8	                -- do *3.6 for km/h, cause DCS thinks in m/s	
 local inRoadSpeed                       = 15	            -- do *3.6 for km/h, cause DCS thinks in m/s
 local infantrySpeed                     = 2	                -- do *3.6 for km/h, cause DCS thinks in m/s	
-local rndRepositionDistance		        = 2000 		        -- meters, reposition distance given to a group when a destination is not defined. The direction also will be totally random. Used, i.e., for "panic" reaction
-local repositionDistance				= 500		        -- meters
-local forceRoadUse                      = nil               -- this variable is automatically handled. It's used for every planned movement, being dependant by obstacle numbers and also by weather
+local repositionDistance				= 500		        -- meters, radius to a specific destination point that will be randomized between 90% and 110% of this value. Used when a group is moved upon another group position: the other group position will be the destination.
+local rndFleeDistance		            = 2000 		        -- meters, reposition distance given to a group when a destination is not defined. The direction also will be totally random. Used, i.e., for "panic" reaction
 
 -- dismounted troops variables
 local droppedReposition                 = 80                -- if no enemy is identified, this is the distance where dismount group will reposition themselfs
@@ -119,7 +118,7 @@ local stupidIndex                       = 1                 -- used to avoid inf
 -- SA evaluation variables
 local proxyBuildingDistance				= 4000              -- m, if buildings are whitin this distance value, they are considered "close"
 local proxyUnitsDistance                = 5000              -- m, if units are whitin this distance value, they are considered "close"
-local supportDistance					= 12000				-- m, maximum distance for evaluating support or cover movements when under attack
+local supportDistance					= 8000				-- m, maximum distance for evaluating support or cover movements when under attack
 local withrawDist                       = 15000             -- m, maximum distance for withdraw manouver nearby a friendly support unit
 
 
@@ -145,7 +144,7 @@ local PHASE                             = "Initialization"  -- used by FSM, don'
 local phase_index                   	= nil
 local phase_keys                        = {}
 local phaseCycleTimer                   = 0.2               -- seconds, used by FSM. Define how much time pass between a loop entry calculation and another. You might want to reduce it further or if you feel DCS being "slow" you can raise up to 1.0 second. 
-
+local forceRoadUse                      = nil               -- this variable is automatically handled. It's used for every planned movement, being dependant by obstacle numbers and also by weather
 
 --AI processing timers
 local underAttack                       = {}                -- used when a group has been attacked, it keeps "tactical" tasking off for 10 mins leaving room for "reaction" decision making
@@ -5890,7 +5889,7 @@ local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, 
 
             local rndCoord = nil
             if point == nil then
-                point = getRandTerrainPointInCircle(group:getPosition().p, rndRepositionDistance*1.1, rndRepositionDistance*0.9)
+                point = getRandTerrainPointInCircle(group:getPosition().p, rndFleeDistance*1.3, rndFleeDistance*0.9)
                 rndCoord = point
             end
         
@@ -7777,38 +7776,39 @@ local function populate_Db() -- this one is launched once at mission start and c
 	for i = 0, 2 do
 		for _, gp in pairs(coalition.getGroups(i), 2) do -- ground only
 			if gp:isExist() then
-				if groupAllowedForAI(gp) == true then
-                    local c = getGroupClass(gp)
-                    local gpcoa = gp:getCoalition()
-                    -- classes reminder from getGroupClass:
-                    -- MBT
-                    -- ATGM
-                    -- IFV
-                    -- APC
-                    -- RECCE
-                    -- LOGI
-                    -- MLRS
-                    -- ARTY
-                    -- MISSILE
-                    -- MANPADS
-                    -- SHORAD
-                    -- AAA
-                    -- SAM
-                    -- INF
-                    -- UNKN
-					
-					local s = getGroupSkillNum(gp)
-                    env.info(("AIEN, populate_Db: s " .. tostring(s)))
-                    local det, thr = getRanges(gp)
-                    if c then
-                        --local r = getMEroute(gp)
-                        groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gpcoa, detection = det, threat = thr, tasked = false, skill = s}  --, route = r
-                        env.info(("AIEN, populate_Db: adding to groundgroupsDb " .. tostring(gp:getName() .. ", class " .. tostring(c) )))
-                    else
-                        env.info(("AIEN, populate_Db: skipping group due to unable to identify class " .. tostring(gp:getName() )))
-                    end
 
-                    -- dismount dbs
+                local c = getGroupClass(gp)
+                local gpcoa = gp:getCoalition()
+                -- classes reminder from getGroupClass:
+                -- MBT
+                -- ATGM
+                -- IFV
+                -- APC
+                -- RECCE
+                -- LOGI
+                -- MLRS
+                -- ARTY
+                -- MISSILE
+                -- MANPADS
+                -- SHORAD
+                -- AAA
+                -- SAM
+                -- INF
+                -- UNKN
+                
+                local s = getGroupSkillNum(gp)
+                env.info(("AIEN, populate_Db: s " .. tostring(s)))
+                local det, thr = getRanges(gp)
+                if c then
+                    --local r = getMEroute(gp)
+                    groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gpcoa, detection = det, threat = thr, tasked = false, skill = s}  --, route = r
+                    env.info(("AIEN, populate_Db: adding to groundgroupsDb " .. tostring(gp:getName() .. ", class " .. tostring(c) )))
+                else
+                    env.info(("AIEN, populate_Db: skipping group due to unable to identify class " .. tostring(gp:getName() )))
+                end
+
+                -- dismount dbs
+                if dismount == true then
                     if gp:getUnits() and #gp:getUnits() > 0 then
                         for _, un in pairs(gp:getUnits()) do
                             if un:hasAttribute("IFV") or un:hasAttribute("APC") or un:hasAttribute("Trucks") then
@@ -7860,11 +7860,8 @@ local function populate_Db() -- this one is launched once at mission start and c
                             end
                         end
                     end
+                end
 
-
-				else
-					env.info(("AIEN, populate_Db: skipping group due to exclusion tag " .. tostring(gp:getName() )))
-				end
 			end
 		end
 	end
@@ -7874,23 +7871,18 @@ local function populate_Db() -- this one is launched once at mission start and c
 	for i = 0, 2 do
 		for _, gp in pairs(coalition.getGroups(i), 0) do -- airplane only
 			if gp:isExist() then
-				if groupAllowedForAI(gp) == true then
-                    local c = nil
-					if gp:getUnits() then
-						for _, un in pairs(gp:getUnits()) do
-							if un:hasAttribute("UAVs") then -- drone only
-                                c = "UAV"
-							end
-						end
-					end
-                    if c then
-                        env.info(("AIEN, populate_Db: adding to droneunitDb " .. tostring(gp:getName() )))
-                        droneunitDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition()}
+                local c = nil
+                if gp:getUnits() then
+                    for _, un in pairs(gp:getUnits()) do
+                        if un:hasAttribute("UAVs") then -- drone only
+                            c = "UAV"
+                        end
                     end
-
-				else
-					env.info(("AIEN, populate_Db: skipping group due to exclusion tag " .. tostring(gp:getName() )))
-				end					
+                end
+                if c then
+                    env.info(("AIEN, populate_Db: adding to droneunitDb " .. tostring(gp:getName() )))
+                    droneunitDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition()}
+                end				
 			end
 		end
 	end
@@ -8646,36 +8638,30 @@ local function event_birth(initiator)
             if not initiator:hasAttribute("Infantry") then
                 local gp = initiator:getGroup()
                 if gp then
-                    if groupAllowedForAI(gp) == true then
-                        if not groundgroupsDb[gp:getID()] then -- since event is launched for each unit, this prevent re-adding the same group multiple times
-                            local c = getGroupClass(gp)
-                            local det, thr = getRanges(gp)
-                            local s = getGroupSkillNum(gp)
-                            --env.info(("AIEN, event_birth: s " .. tostring(s)))
-                            groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition(), detection = det, threat = thr, tasked = false, skill = s}
-                            --env.info(("AIEN, event_birth: adding to groundgroupsDb " .. tostring(gp:getName() )))
-                        end
+                    if not groundgroupsDb[gp:getID()] then -- since event is launched for each unit, this prevent re-adding the same group multiple times
+                        local c = getGroupClass(gp)
+                        local det, thr = getRanges(gp)
+                        local s = getGroupSkillNum(gp)
+                        --env.info(("AIEN, event_birth: s " .. tostring(s)))
+                        groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition(), detection = det, threat = thr, tasked = false, skill = s}
+                        --env.info(("AIEN, event_birth: adding to groundgroupsDb " .. tostring(gp:getName() )))
                     end
                 end
             elseif objCat == 1 and subCat == 0 then -- unit, plane unit (drone)	
                 local gp = initiator:getGroup() 
-                if gp then
-                    if groupAllowedForAI(gp) == true then -- need all the "Group" loop thing due to the exclusion tag check					
-                        local c = nil
-                        if gp:getUnits() and #gp:getUnits() > 0 then
-                            for _, un in pairs(gp:getUnits()) do
-                                if un:hasAttribute("UAVs") then -- drone only
-                                    c = "UAV"
-                                end
+                if gp then				
+                    local c = nil
+                    if gp:getUnits() and #gp:getUnits() > 0 then
+                        for _, un in pairs(gp:getUnits()) do
+                            if un:hasAttribute("UAVs") then -- drone only
+                                c = "UAV"
                             end
                         end
-                        if c then
-                            env.info(("AIEN, event_birth: adding to droneunitDb " .. tostring(un:getName() )))
-                            droneunitDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition()}
-                        end                        
-                    else
-                        env.info(("AIEN, event_birth: skipping drone unit due to exclusion tag in group name " .. tostring(gp:getName() )))
-                    end						
+                    end
+                    if c then
+                        env.info(("AIEN, event_birth: adding to droneunitDb " .. tostring(un:getName() )))
+                        droneunitDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition()}
+                    end                        					
                 end
             end	
         end
