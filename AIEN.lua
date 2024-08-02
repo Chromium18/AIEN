@@ -8399,7 +8399,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                             o_pos       = unit:getPoint()
                             
                             -- define weapon info, used to identify arty attack
-                            if weapon then
+                            if weapon and weapon:isExist() then
                                 w_cat = weapon:getDesc().category
                                 --[[-- 
                                     Weapon.Category
@@ -8413,7 +8413,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 end								
                             end
 
-                            if shooter and con then
+                            if shooter and shooter:isExist() and con then
                                 if AIEN_debugProcessDetail == true then
                                     env.info(("AIEN.event_hit, S_EVENT_HIT, shooter known"))
                                 end	
