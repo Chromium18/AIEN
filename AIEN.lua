@@ -168,7 +168,7 @@ if env.mission.weather.clouds.iprecptns > 0 then
 end
 
 
---## LOCAL DYNAMIC TABLES
+--## LOCAL DYNAMIC TABLES (DBs)
 
 local groundgroupsDb    = {} -- used for general purpose on groups command
 local droneunitDb       = {} -- used mostly for artillery control
@@ -5387,7 +5387,7 @@ local function getSA(group) -- built a situational awareness check
 		-- derivable functions
 		sa.enInContact, sa.targets 	= hasTargets(group)
 		sa.loss 		            = groupHasLosses(group)
-		sa.dmg, sa.life, sa.str     = groupStatus(group)
+		sa.dmg, sa.life, sa.str     = groupStatus(group) -- str must be added
 		sa.low_ammo 	            = groupLowAmmo(group)
 		sa.pos			            = getLeadPos(group)
         sa.coa                      = group:getCoalition()
