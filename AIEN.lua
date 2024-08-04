@@ -79,7 +79,7 @@ local rndFleeDistance		            = 2000 		        -- meters, reposition distan
 -- dismounted troops variables
 local droppedReposition                 = 80                -- if no enemy is identified, this is the distance where dismount group will reposition themselfs
 local remountTime                       = 600               -- time after which dismounted troops will try to go back to their original vehicle for remount, if commanded
-local infantryExtractDist               = 200              -- max distance from vehicle to troops to allow a group extraction
+local infantryExtractDist               = 200               -- max distance from vehicle to troops to allow a group extraction
 local infantrySearchDist                = 2000              -- max distance from vehicle to troops to allow a dismount group to run toward the enemies
 
 -- informative calls variables
@@ -88,7 +88,7 @@ local outAmmoLowLevel                   = 0.5		        -- factor on total amount
 -- reactions and tasking variables
 local intelDbTimeout                    = 1200              -- seconds. Used to cancel intelDb entries for units (not static!), when the time of the contact gathering is more than this value
 local artyFireLastContactThereshold     = 300               -- seconds, max amount of time since last contac to consider an arty target ok
-local taskTimeout                       = 360               -- seconds after which a tasked group is removed from the database
+local taskTimeout                       = 480               -- seconds after which a tasked group is removed from the database
 local disperseActionTime				= 120		        -- seconds
 
 -- SA evaluation variables
@@ -145,8 +145,8 @@ local phase_index                   	= nil
 local phase_keys                        = {}
 local phaseCycleTimer                   = 0.2               -- seconds, used by FSM. Define how much time pass between a loop entry calculation and another. You might want to reduce it further or if you feel DCS being "slow" you can raise up to 1.0 second. 
 local forceRoadUse                      = nil               -- this variable is automatically handled. It's used for every planned movement, being dependant by obstacle numbers and also by weather
-local rndMinRT_xper                     = 1                 -- seconds counted as minimum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
-local rndMacRT_xper                     = 5                 -- seconds counted as maximum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
+local rndMinRT_xper                     = 2                 -- seconds counted as minimum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
+local rndMacRT_xper                     = 4                 -- seconds counted as maximum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
 local stupidIndex                       = 1                 -- used to avoid infinite loops
 
 --AI processing timers
@@ -244,7 +244,7 @@ local supportCounterAirClasses  = {
 -- used in multiple part of the scripts for defining reactions, speed, and smartness of the groups
 local skills = {
     ["Average"] = {aim_delay = 170, skillVal = 4},
-    ["High"] = {aim_delay = 130, skillVal = 10},
+    ["High"] = {aim_delay = 130, skillVal = 9},
     ["Good"] = {aim_delay = 150, skillVal = 6},
     ["Excellent"] = {aim_delay = 110, skillVal = 12},   
 	["Random"] = {aim_delay = 140, skillVal = 8},  -- skill val is NOT used in this case, it's replaced by a randomness.
@@ -4745,10 +4745,10 @@ local function round(num, idp)
 end 
 
 local function getReactionTime(avg_skill)
-    if s then -- 
-        local multiplier = 10/((s^2)/6)
-        local min = rndMinRT_xper*multiplier
-        local max = rndMacRT_xper*multiplier
+    if avg_skill then -- 
+        local multiplier = 10/((avg_skill^2)/6)
+        local min = math.floor(rndMinRT_xper*multiplier)+3
+        local max = math.floor(rndMacRT_xper*multiplier)+3
         return aie_random(min, max)
     else
         return aie_random(5, 20)
@@ -5627,7 +5627,7 @@ local function groupSuppress(group) -- quite important: provide random "suppress
         local c = group:getController()
         if c then
 			local s = getGroupSkillNum(group)
-			local rt = getReactionTime(s)
+			local st = getReactionTime(s)*2
 			
             c:setOption(AI.Option.Ground.id.ROE, 4)
             if AIEN_debugProcessDetail == true then
@@ -5637,7 +5637,7 @@ local function groupSuppress(group) -- quite important: provide random "suppress
                 c:setOption(AI.Option.Ground.id.ROE, 2)
             end
             if back then
-                timer.scheduleFunction(back, {}, timer.getTime() + rt)
+                timer.scheduleFunction(back, {}, timer.getTime() + st)
             end
         end
     end
@@ -6415,7 +6415,7 @@ local function groupMountTeam(group)
     end
 end
 
-local function groupDeployTroop(group, comeback)
+local function groupDeployTroop(group, nocomeback)
     if group and group:isExist() == true and group:getUnits() and #group:getUnits() > 0 then
         local units = group:getUnits()
         for uId, uData in pairs(units) do
@@ -6425,7 +6425,7 @@ local function groupDeployTroop(group, comeback)
                 if mountedDb[uData:getID()] then
                     deployTroops(uData)
 
-                    if comeback == true then
+                    if not nocomeback then
                         timer.scheduleFunction(groupMountTeam, group, timer.getTime() + remountTime)
                     end
                 end
@@ -6492,11 +6492,11 @@ local function groupDeployManpad(group) -- this won't trigger the deploy of any 
 end
 
 -- ## externally access command, by script
-function AIEN_groupDeploy(gName, remountVar) -- this one is global, to provide any user to make a group manually dismount via script or trigger action (do script) if remountVar is true, the dismounted group will go back to its vehicle after about 10 mins.
+function AIEN_groupDeploy(gName, noremount) -- this one is global, to provide any user to make a group manually dismount via script or trigger action (do script) if remountVar is true, the dismounted group will go back to its vehicle after about 10 mins.
     if gName and type(gName) == "string" then
         local g = Group.getByName(gName)
         if g then
-            groupDeployTroop(g, remountVar)
+            groupDeployTroop(g, noremount)
         end
     end
 end
@@ -6553,7 +6553,7 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
     if group and ownPos then
 
         if dismount == true then
-            groupDeployTroop(group, true)
+            groupDeployTroop(group, false)
         end
 
         local funcDoAction = function()
@@ -6692,7 +6692,7 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
         timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
         groupGoShoot(group)
         if dismount == true then
-            groupDeployTroop(group, true)
+            groupDeployTroop(group, false)
         end
 
         if resume then
@@ -7964,7 +7964,7 @@ local function update_GROUND()
                                 end
                             else
                                 local t = timer.getTime() - underAttack[phase_index]
-                                if taskTimeout > t then
+                                if taskTimeout/2 > t then
                                     underAttack[phase_index] = nil
                                     if AIEN_debugProcessDetail then
                                         env.info(("AIEN, update_GROUND, group name " .. tostring(gData.n) .. " removed from the under attack table"))
@@ -8111,131 +8111,133 @@ end
 -- ARTY update, PHASE "D"
 local function update_ARTY()
     if PHASE == "D" then -- confirm correct PHASE of performPhaseCycle
-        if groundgroupsDb and next(groundgroupsDb) ~= nil or firemissions == false then -- check that table exist and that it's not void
-            if not phase_index then -- escape condition from the 2nd loop!
+        if groundgroupsDb and next(groundgroupsDb) ~= nil then -- check that table exist and that it's not void
+            if not phase_index or firemissions == false then -- escape condition from the 2nd loop!
                 AIEN.changePhase()
                 timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
                 if AIEN_debugProcessDetail then
                     env.info(("AIEN, update_ARTY: phase D completed or skipped"))
                 end
             else
-                local gData = groundgroupsDb[phase_index]
-                if gData then
+                if not underAttack[phase_index] then 
+                    local gData = groundgroupsDb[phase_index]
+                    if gData then
 
-                    local AI_consent = true
-                    if gData.coa == 2 and blueAI == false then
-                        AI_consent = false
-                    end
-                    if gData.coa == 1 and redAI == false then
-                        AI_consent = false
-                    end                
+                        local AI_consent = true
+                        if gData.coa == 2 and blueAI == false then
+                            AI_consent = false
+                        end
+                        if gData.coa == 1 and redAI == false then
+                            AI_consent = false
+                        end                
 
-                    if AI_consent == true and groupAllowedForAI(gData.group) == true then -- both coalition AI should be on and group exclusion tag shouldn't be there
-                        local remove = false
-                        if gData.group then
-                            if gData.group and gData.group:isExist() == true and gData.sa and gData.tasked == false then
-                                if not underAttack[phase_index] then
-                                    if gData.class == "MLRS" or gData.class == "ARTY" then
-                                        if gData.threat then
-                                            -- check ammo
-                                            local ammoAvail = 0
-                                            local units = gData.group:getUnits()
-                                            local curPos = nil
-                                            for uId, uData in pairs(units) do
-                                                local ammoTbl = uData:getAmmo()
-                                                if ammoTbl then
-                                                    for aId, aData in pairs(ammoTbl) do 
-                                                        if aId == 1 then
-                                                            if aData.count > ammoAvail then
-                                                                ammoAvail = aData.count + ammoAvail
-                                                            end
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                            local roundsToFire = 0
-                                            if ammoAvail > 30 then
-                                                roundsToFire = 30
-                                            else
-                                                roundsToFire = ammoAvail
-                                            end
-
-
-                                            if roundsToFire > 0 then
-
-                                                -- check targets   
-                                                local firePoint = nil
-                                                local targetId = nil
-                                                local _volume = {
-                                                    id = world.VolumeType.SPHERE,
-                                                    params = {
-                                                        point = gData.sa.pos,
-                                                        radius = gData.threat*0.85,
-                                                    },
-                                                }
-
-                                                local curPri = 0
-                                                local _search = function(_obj)
-                                                    pcall(function()
-                                                        if _obj ~= nil and _obj:isExist() and _obj:getCoalition() ~= gData.coa then
-                                                            local _obj_id = _obj:getID()
-                                                            local report = intelDb[_obj_id]
-                                                            if report and report.speed < 1 then
-                                                                local lastContact = (timer.getTime() - report.record )
-                                                                if lastContact < artyFireLastContactThereshold then
-                                                                    local timeFactor = (artyFireLastContactThereshold-lastContact)/artyFireLastContactThereshold
-                                                                    local pri = classPriority[report.cls]
-                                                                    if not pri then
-                                                                        pri = 0.5
-                                                                    end
-                                                                    pri = pri * timeFactor
-                                                                    if pri > curPri then
-                                                                        curPri = pri
-                                                                        firePoint = report.pos
-                                                                        targetId = report.cls
-                                                                    end
+                        if AI_consent == true and groupAllowedForAI(gData.group) == true then -- both coalition AI should be on and group exclusion tag shouldn't be there
+                            local remove = false
+                            if gData.group then
+                                if gData.group and gData.group:isExist() == true and gData.sa and gData.tasked == false then
+                                    if not underAttack[phase_index] then
+                                        if gData.class == "MLRS" or gData.class == "ARTY" then
+                                            if gData.threat then
+                                                -- check ammo
+                                                local ammoAvail = 0
+                                                local units = gData.group:getUnits()
+                                                local curPos = nil
+                                                for uId, uData in pairs(units) do
+                                                    local ammoTbl = uData:getAmmo()
+                                                    if ammoTbl then
+                                                        for aId, aData in pairs(ammoTbl) do 
+                                                            if aId == 1 then
+                                                                if aData.count > ammoAvail then
+                                                                    ammoAvail = aData.count + ammoAvail
                                                                 end
                                                             end
                                                         end
-                                                    end)
-                                                end
-                                                world.searchObjects(Object.Category.UNIT, _volume, _search)
-                                                
-                                                -- issuing mission
-                                                if firePoint then
-                                                    if AIEN_debugProcessDetail then
-                                                        env.info(("AIEN, update_ARTY, suitable target found for : " .. tostring(gData.n) .. ": " .. tostring(targetId) .. ", will fire " .. tostring(roundsToFire) .. " rounds"))
                                                     end
-                                                    gData.tasked = true
-                                                    gData.taskTime = timer.getTime()
-                                                    gData.firePoint = firePoint
-                                                    groupfireAtPoint({gData.group, firePoint, roundsToFire})
                                                 end
-                                            end
+                                                local roundsToFire = 0
+                                                if ammoAvail > 30 then
+                                                    roundsToFire = 30
+                                                else
+                                                    roundsToFire = ammoAvail
+                                                end
 
-                                        else
-                                            if AIEN_debugProcessDetail then
-                                                env.info(("AIEN, update_ARTY, threat range not available"))
+
+                                                if roundsToFire > 0 then
+
+                                                    -- check targets   
+                                                    local firePoint = nil
+                                                    local targetId = nil
+                                                    local _volume = {
+                                                        id = world.VolumeType.SPHERE,
+                                                        params = {
+                                                            point = gData.sa.pos,
+                                                            radius = gData.threat*0.85,
+                                                        },
+                                                    }
+
+                                                    local curPri = 0
+                                                    local _search = function(_obj)
+                                                        pcall(function()
+                                                            if _obj ~= nil and _obj:isExist() and _obj:getCoalition() ~= gData.coa then
+                                                                local _obj_id = _obj:getID()
+                                                                local report = intelDb[_obj_id]
+                                                                if report and report.speed < 1 then
+                                                                    local lastContact = (timer.getTime() - report.record )
+                                                                    if lastContact < artyFireLastContactThereshold then
+                                                                        local timeFactor = (artyFireLastContactThereshold-lastContact)/artyFireLastContactThereshold
+                                                                        local pri = classPriority[report.cls]
+                                                                        if not pri then
+                                                                            pri = 0.5
+                                                                        end
+                                                                        pri = pri * timeFactor
+                                                                        if pri > curPri then
+                                                                            curPri = pri
+                                                                            firePoint = report.pos
+                                                                            targetId = report.cls
+                                                                        end
+                                                                    end
+                                                                end
+                                                            end
+                                                        end)
+                                                    end
+                                                    world.searchObjects(Object.Category.UNIT, _volume, _search)
+                                                    
+                                                    -- issuing mission
+                                                    if firePoint then
+                                                        if AIEN_debugProcessDetail then
+                                                            env.info(("AIEN, update_ARTY, suitable target found for : " .. tostring(gData.n) .. ": " .. tostring(targetId) .. ", will fire " .. tostring(roundsToFire) .. " rounds"))
+                                                        end
+                                                        gData.tasked = true
+                                                        gData.taskTime = timer.getTime()
+                                                        gData.firePoint = firePoint
+                                                        groupfireAtPoint({gData.group, firePoint, roundsToFire})
+                                                    end
+                                                end
+
+                                            else
+                                                if AIEN_debugProcessDetail then
+                                                    env.info(("AIEN, update_ARTY, threat range not available"))
+                                                end
                                             end
                                         end
                                     end
+                                else
+                                    remove = true
                                 end
                             else
                                 remove = true
                             end
-                        else
-                            remove = true
                         end
-                    end
 
-                    if remove == true then
-                        if AIEN_debugProcessDetail then
-                            env.info(("AIEN, update_GROUND, group name " .. tostring(gData.n) .. " missing. Removing it"))
+                        if remove == true then
+                            if AIEN_debugProcessDetail then
+                                env.info(("AIEN, update_GROUND, group name " .. tostring(gData.n) .. " missing. Removing it"))
+                            end
+                            groundgroupsDb[phase_index] = nil
+                            phase_keys = createIterator(groundgroupsDb)                        
                         end
-                        groundgroupsDb[phase_index] = nil
-                        phase_keys = createIterator(groundgroupsDb)                        
-                    end
 
+                    end
                 end
                 phase_index = getNextKey(phase_keys, phase_index)
                 timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
@@ -8351,41 +8353,62 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
             
             if group and group:isExist() and groupAllowedForAI(group) == true then -- filtering both for existance and for exclusion tag being not there
                 
-                -- suppression part
-                if shooter and armoured and suppression == true then
-                    local suppressEffects = true
-                    if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
-                        suppressEffects = false
-                    end
-                    if suppressEffects == true then
-                        if AIEN_debugProcessDetail == true then
-                            env.info(("AIEN.event_hit, S_EVENT_HIT, group is suppressed: " .. tostring(group:getName()) ))
-                        end		
-                        groupSuppress(group)
-                    end
+                local AI_consent = true
+                if group:getCoalition() == 2 and blueAI == false then
+                    AI_consent = false
                 end
+                if group:getCoalition() == 1 and redAI == false then
+                    AI_consent = false
+                end  
 
-                -- reaction part
-                if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
-                    
-                    if AIEN_debugProcessDetail == true then
-                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) ))
-                    end					
+                if AI_consent == true then
 
-                    -- retrieve SA & Controller
-                    local con = group:getController()
-                    local db_group = groundgroupsDb[group:getID()]
-                    if con and db_group and db_group.sa then
-
-                        local AI_consent = true
-                        if db_group.coa == 2 and blueAI == false then
-                            AI_consent = false
+                    -- suppression part
+                    if shooter and shooter:isExist() and armoured and suppression == true then
+                        local suppressEffects = false
+                        if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
+                            suppressEffects = true
                         end
-                        if db_group.coa == 1 and redAI == false then
-                            AI_consent = false
-                        end  
+                        if suppressEffects == true then
+                            if AIEN_debugProcessDetail == true then
+                                env.info(("AIEN.event_hit, S_EVENT_HIT, group is suppressed: " .. tostring(group:getName()) ))
+                            end		
+                            groupSuppress(group)
+                        end
+                    end
 
-                        if AI_consent == true then
+                    -- dismount part
+                    if shooter and shooter:isExist() and dismount == true then
+                        if not underAttack[group:getID()] then
+                            if shooter:hasAttribute("Air") then
+                                timer.scheduleFunction(groupDeployManpad, group, timer.getTime() + aie_random(8, 15))
+                                if AIEN_debugProcessDetail == true then
+                                    env.info(("AIEN.event_hit, S_EVENT_HIT, shooter is airborne, manpad dismount happens"))
+                                end	 
+                            elseif shooter:hasAttribute("Ground Units") then
+                                local d = infantrySearchDist
+                                local dist = getDist(shooter:getPoint(), position)
+                                if dist < d then
+                                    timer.scheduleFunction(groupDeployTroop, group, timer.getTime() + aie_random(8, 15))
+                                    if AIEN_debugProcessDetail == true then
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, distance is close, infantry dismount happens"))
+                                    end	    
+                                end                            
+                            end
+                        end
+                    end
+
+                    -- reaction part
+                    if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
+                        
+                        if AIEN_debugProcessDetail == true then
+                            env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) ))
+                        end					
+
+                        -- retrieve SA & Controller
+                        local con = group:getController()
+                        local db_group = groundgroupsDb[group:getID()]
+                        if con and db_group and db_group.sa then
 
                             -- define if the attacker is known and and with what details
                             local s_detected, s_visible, s_lastTime, s_type, s_distance, s_lastPos, s_lastVel, s_cat, w_cat, o_cat, s_indirect, s_close, s_fireMis, a_pos, o_cls, s_cls, o_pos
@@ -8459,27 +8482,6 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                     end
                                 end      
 
-                                --shooter is airborne
-                                if s_cls == "ARBN" then
-                                    groupDeployManpad(group)
-                                end
-
-                                -- shooter is in infantry range
-                                if a_pos and position and dismount == true then
-                                    local d = 1000
-                                    local dist = getDist(a_pos, position)
-                                    if dist < d then
-                                        groupDeployTroop(group, true)
-                                        if AIEN_debugProcessDetail == true then
-                                            env.info(("AIEN.event_hit, S_EVENT_HIT, distance is close, infantry dismount happens"))
-                                        end	    
-                                    end
-                                else
-                                    if AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, enemy position not known"))
-                                    end	                                    
-                                end      
-                    
                                 -- position and speed
                                 if a_pos and s_lastVel and s_lastTime then
                                     if timer.getTime() - s_lastTime < 30 and s_lastVel < 1 then
@@ -8506,7 +8508,6 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                             end	 
                                         elseif w_cat == 1 or w_cat == 3 then -- shooter is unknown, and the weapon is a missile or a bomb: airborne threat is possibile
                                             s_cls = "ARBN"
-                                            groupDeployManpad(group)
                                             if AIEN_debugProcessDetail == true then
                                                 env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but airborne fire possibile"))
                                             end	 
@@ -8549,11 +8550,6 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 av_ac[5] = nil -- remove attack
                                 av_ac[7] = nil -- remove ground support
                                 av_ac[3] = nil -- remove disperse
-								
-								if dismount == true then
-									timer.scheduleFunction(groupDeployManpad, group, timer.getTime() + aie_random(8, 15)) -- if a group has manpads available in its units, and the shooter is airborne, it will dismount in any case these manpads teams.
-								end
-								
                             end
                             if s_cls ~= "ARBN" then -- shooter is not airborne
                                 av_ac[8] = nil -- remove counter ADS
@@ -8605,14 +8601,14 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                             underAttack[group:getID()] = timer.getTime()
 
                             executeActions(group, o_pos, a_pos, bc_ac, db_group.sa, db_group.skill)
-                        else
-                            if AIEN_debugProcessDetail == true then
-                                env.info(("AIEN.event_hit, S_EVENT_HIT, AI consent is false"))
-                            end	
-                        end
-                    
-                    end
 
+                        end
+
+                    end
+                else
+                    if AIEN_debugProcessDetail == true then
+                        env.info(("AIEN.event_hit, S_EVENT_HIT, AI consent is false"))
+                    end	
                 end
             end
         else
