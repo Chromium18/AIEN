@@ -37,6 +37,3 @@ Notes:
 Purpose and limitations:
 The script does not want to provide a complete "automated ground war" thing: this is already in development by both ED and also by DSMC script by me. 
 In fact, this script is a part of the DSMC script, but still usable externally as standalone
-
-Suggestion, ideas:
--- Please refer to the script GitHub project, you will find the project details to suggest modification, contribute with coding and else.
