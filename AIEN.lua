@@ -119,7 +119,7 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "0"
 local SubVersion 						= "9"
-local Build 							= "0110"
+local Build 							= "0111"
 local Date								= "2024.08.04"
 
 --## NOT USED (YET) / TO BE REMOVED
