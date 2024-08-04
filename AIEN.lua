@@ -86,7 +86,7 @@ local infantrySearchDist                = 2000              -- max distance from
 local outAmmoLowLevel                   = 0.5		        -- factor on total amount
 
 -- reactions and tasking variables
-local intelDbTimeout                    = 1800              -- seconds. Used to cancel intelDb entries for units (not static!), when the time of the contact gathering is more than this value
+local intelDbTimeout                    = 1200              -- seconds. Used to cancel intelDb entries for units (not static!), when the time of the contact gathering is more than this value
 local artyFireLastContactThereshold     = 300               -- seconds, max amount of time since last contac to consider an arty target ok
 local taskTimeout                       = 360               -- seconds after which a tasked group is removed from the database
 local disperseActionTime				= 120		        -- seconds
@@ -5503,7 +5503,7 @@ local function getSA(group) -- built a situational awareness check
                             end
 
                             local t_cls = getUnitClass(tgt)
-                            intelDb[t_id] = {obj = tgt, pos = t_pos, coa = t_coa, life = t_life, record = t, speed = s, type = t_type, ucat = t_ucat, scat = t_scat, attr = t_attr, cls = t_cls}
+                            intelDb[t_id] = {obj = tgt, pos = t_pos, coa = t_coa, life = t_life, record = t, speed = s, type = t_type, ucat = t_ucat, scat = t_scat, attr = t_attr, cls = t_cls, identifier = sa.cls}
                         
                         end
                     end
@@ -8023,7 +8023,7 @@ local function update_ISR() -- basically clean old ISR data
             else
                 local tData = intelDb[phase_index]
                 if tData then
-                    local remove = false
+                    --local remove = false
                     if not tData.obj or tData.obj:isExist() == false then
                         if AIEN_debugProcessDetail then
                             env.info(("AIEN, update_ISR, target id " .. tostring(phase_index) .. " missing. Removing it"))
