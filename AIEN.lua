@@ -4746,9 +4746,9 @@ end
 
 local function getReactionTime(avg_skill)
     if avg_skill then -- 
-        local multiplier = 10/((avg_skill^2)/6)
-        local min = math.floor(rndMinRT_xper*multiplier)+3
-        local max = math.floor(rndMacRT_xper*multiplier)+3
+        local multiplier = 10/(avg_skill/10)
+        local min = math.floor(rndMinRT_xper*multiplier)
+        local max = math.floor(rndMacRT_xper*multiplier)
         return aie_random(min, max)
     else
         return aie_random(5, 20)
