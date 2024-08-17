@@ -5657,6 +5657,7 @@ local function groupfireAtPoint(var)
         local gController = group:getController()
         local vec3 = vec3Check(var[2])
         local qty = var[3]
+        local desc = var[4]
 
         if gController and vec3 then
             if AIEN_debugProcessDetail == true then
@@ -5694,12 +5695,23 @@ local function groupfireAtPoint(var)
             if message_feed == true then
 
                 local lat, lon = coord.LOtoLL(vec3)
+                local MGRS = coord.LLtoMGRS(coord.LOtoLL(vec3))
                 if lat and lon then
 
                     local LL_string = tostringLL(lat, lon, 0, true)
+                    local MGRS_string = tostringMGRS(MGRS ,4)
 
                     local txt = ""
-                    local txt = txt .. "C2, " .. tostring(group:getName()) .. ", fire mission. Coordinates: " .. tostring(LL_string) .. ", over"
+                    txt = txt .. "C2, " .. tostring(group:getName()) .. ", request fire mission, fire for Effect. coordinates:"
+                    txt = txt .. "\n" .. tostring(MGRS_string) .. "\n" .. tostring(LL_string)
+                    if desc and type(desc) == "string" then
+                        txt = txt .. "\n" .. desc
+                    end
+                    if expd and qty and type(qty) == "number" then
+                        txt = txt .. "\n" .. tostring(qty) .. " rounds"
+                    end                    
+                    txt = txt .. "\n" .. "Cleared for fire when ready"
+                    
                     local vars = {"text", txt, 20, nil, nil, nil, group:getCoalition()}
 
                     multyTypeMessage(vars)
@@ -7031,7 +7043,7 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
                             og.tasked = true
                             og.taskTime = timer.getTime()
                             og.firePoint = tgtPos
-                            groupfireAtPoint({og.group, tgtPos, 20})
+                            groupfireAtPoint({og.group, tgtPos, 20, "Immediate suppression"})
                             if AIEN_debugProcessDetail == true then
                                 env.info(("AIEN, ac_fireMissionOnShooter return true, planning the fire mission"))
                             end
@@ -8130,9 +8142,9 @@ local function update_ARTY()
                         if gData.coa == 1 and redAI == false then
                             AI_consent = false
                         end                
-
+                        local remove = false
+                        
                         if AI_consent == true and groupAllowedForAI(gData.group) == true then -- both coalition AI should be on and group exclusion tag shouldn't be there
-                            local remove = false
                             if gData.group then
                                 if gData.group and gData.group:isExist() == true and gData.sa and gData.tasked == false then
                                     if not underAttack[phase_index] then
@@ -8210,7 +8222,12 @@ local function update_ARTY()
                                                         gData.tasked = true
                                                         gData.taskTime = timer.getTime()
                                                         gData.firePoint = firePoint
-                                                        groupfireAtPoint({gData.group, firePoint, roundsToFire})
+                                                        local description = nil
+                                                        if targetId then
+                                                            description = "Target is " .. tostring(targetId)
+                                                        end
+
+                                                        groupfireAtPoint({gData.group, firePoint, roundsToFire, description})
                                                     end
                                                 end
 
@@ -8361,7 +8378,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                     AI_consent = false
                 end  
 
-                if AI_consent == true then
+                if AI_consent == true then -- check
 
                     -- suppression part
                     if shooter and shooter:isExist() and armoured and suppression == true then
@@ -8378,7 +8395,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                     end
 
                     -- dismount part
-                    if shooter and shooter:isExist() and dismount == true then
+                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and dismount == true then
                         if not underAttack[group:getID()] then
                             if shooter:hasAttribute("Air") then
                                 timer.scheduleFunction(groupDeployManpad, group, timer.getTime() + aie_random(8, 15))
@@ -8492,28 +8509,27 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 if AIEN_debugProcessDetail == true then
                                     env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown"))
                                 end	 
-                                if weapon then
-                                    if w_cat then
-                                        --[[-- 
-                                            Weapon.Category
-                                            SHELL     0
-                                            MISSILE   1
-                                            ROCKET    2
-                                            BOMB      3
-                                        --]]--
-                                        if w_cat == 0 or w_cat == 2 then -- shooter is unknown, and the weapon is a shell or a rocket: artillery is possibile
-                                            s_indirect = 1
-                                            if AIEN_debugProcessDetail == true then
-                                                env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but arty fire possibile"))
-                                            end	 
-                                        elseif w_cat == 1 or w_cat == 3 then -- shooter is unknown, and the weapon is a missile or a bomb: airborne threat is possibile
-                                            s_cls = "ARBN"
-                                            if AIEN_debugProcessDetail == true then
-                                                env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but airborne fire possibile"))
-                                            end	 
-                                        end
 
+                                if w_cat then
+                                    --[[-- 
+                                        Weapon.Category
+                                        SHELL     0
+                                        MISSILE   1
+                                        ROCKET    2
+                                        BOMB      3
+                                    --]]--
+                                    if w_cat == 0 or w_cat == 2 then -- shooter is unknown, and the weapon is a shell or a rocket: artillery is possibile
+                                        s_indirect = 1
+                                        if AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but arty fire possibile"))
+                                        end	 
+                                    elseif w_cat == 1 or w_cat == 3 then -- shooter is unknown, and the weapon is a missile or a bomb: airborne threat is possibile
+                                        s_cls = "ARBN"
+                                        if AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but airborne fire possibile"))
+                                        end	 
                                     end
+
                                 end
                             end
 
