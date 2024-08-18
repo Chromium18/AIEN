@@ -90,6 +90,8 @@ local intelDbTimeout                    = 1200              -- seconds. Used to 
 local artyFireLastContactThereshold     = 300               -- seconds, max amount of time since last contac to consider an arty target ok
 local taskTimeout                       = 480               -- seconds after which a tasked group is removed from the database
 local disperseActionTime				= 120		        -- seconds
+local counterBatteryRadarRange          = 50000             -- m, capable distance for a radar to perform counter battery calculations
+local counterBatteryPlanDelay           = 240               -- s, will be also randomized on +-35%. Used to define the delay of the planned counter battery fire if available
 
 -- SA evaluation variables
 local proxyBuildingDistance				= 4000              -- m, if buildings are whitin this distance value, they are considered "close"
@@ -5701,6 +5703,7 @@ local function groupfireAtPoint(var)
         local vec3 = vec3Check(var[2])
         local qty = var[3]
         local desc = var[4]
+        local radi = var[5]
 
         if gController and vec3 then
             if AIEN_debugProcessDetail == true then
@@ -5711,6 +5714,10 @@ local function groupfireAtPoint(var)
             if not var[3] then
                 expd = false
                 qty = nil
+            end
+
+            if not radi then
+                radi = 50
             end
 
             local _tgtVec2 =  { x = vec3.x  , y = vec3.z} 
@@ -6025,6 +6032,152 @@ local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, 
         end
     end
 end
+
+
+--###### COUNTER BATTERY FIRE ######################################################################
+local function counterBattery(hitPos, tgtPos, coa) -- this function emulates counter battery fire
+    -- this function is not about simulating the counter battery fire process, which involves projectiles radar detection,
+    -- balistic calculations and then defining a shooter position. Instead, for performance purposes, the process is "hinted" using the following method, and start only if the shooter is an "indirect fire" attributes units
+    -- this way:
+    -- * first, since we don't want to do calc, we took the shooter current position when the hit event occours, to use it later if allowed, called tgtPos   
+    -- * second, same reason, we pre-check if a free arty is available in range for fire on shooter position.
+    -- * if arty is ok, and given the hit position, we look for the presence of a suitable radar ("SAM SR", "SAM TR", "EWR" since DCS world doesn't have the right kind of unit) within 50km 
+    -- * if it's there, since we don't want to do calc much, we simply apply some random math formula that depends on distance as a probabilty of trajectory calc IRL and, also, the accuracy
+    -- * if the random pass, the tgt is the passed for arty fire after a random timing that is counterBatteryPlanDelay+-35%.
+
+    if hitPos and tgtPos and coa then
+        if type(hitPos) == "table" and type(tgtPos) == "table" then
+            if hitPos.x and hitPos.z and tgtPos.x and tgtPos.z then
+
+                local arty = nil
+                for _, og in pairs(groundgroupsDb) do
+                    if og.coa == coa and og.tasked == false then
+                        if og.class == "ARTY" or og.class == "MLRS" then --  or og.class == "MLRS" -- not considering MLRS as they're intended for more area or tactical fire
+                            if og.group and og.group:isExist() == true then
+                                local d = getDist(og.pos, tgtPos)
+                                if d < og.threat*0.9 then
+                                    og.tasked = true
+                                    og.taskTime = timer.getTime()
+                                    og.firePoint = tgtPos
+                                    
+                                    if AIEN_debugProcessDetail == true then
+                                        env.info((tostring(ModuleName) .. ", counterBattery artillery potentially available"))
+                                    end
+                                    arty = og.group
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if arty then
+
+                    -- check for near radar within 50 km, if there, return closer distance
+                    local closestRange = counterBatteryRadarRange
+                    local _volume = {
+                        id = world.VolumeType.SPHERE,
+                        params = {
+                            point = hitPos,
+                            radius = counterBatteryRadarRange,
+                        },
+                    }
+
+                    local curPri = 0
+                    local _search = function(_obj)
+                        pcall(function()
+                            if _obj ~= nil and _obj:getCategory() == 1 and _obj:isExist() and _obj:getCoalition() == coa then
+                                if _obj:hasAttribute("SAM SR") or _obj:hasAttribute("SAM TR") or _obj:hasAttribute("EWR") then
+                                    local d = getDist(_obj:getPoint(), hitPos)
+                                    if d < closestRange then
+                                        closestRange = d
+                                    end
+                                end
+                            end
+                        end)
+                    end
+                    world.searchObjects(Object.Category.UNIT, _volume, _search)
+
+                    if closestRange < counterBatteryRadarRange then
+                        local f = math.floor((1-(closestRange/counterBatteryRadarRange)^2)*100)
+                        local r = aie_random(1,100)
+                        if f > r then
+                            local a = math.floor( ((closestRange/counterBatteryRadarRange)^1.5)*300)
+                            local fpos = getRandTerrainPointInCircle(tgtPos, a, 1)
+                            if fpos then
+                                local t = aie_random(math.floor(counterBatteryPlanDelay*0.65), math.floor(counterBatteryPlanDelay*1.35))
+                                
+                                if message_feed == true then
+
+                                    local lat, lon = coord.LOtoLL(hitPos)
+                                    local MGRS = coord.LLtoMGRS(coord.LOtoLL(hitPos))
+                                    if lat and lon then
+                    
+                                        local LL_string = tostringLL(lat, lon, 0, true)
+                                        local MGRS_string = tostringMGRS(MGRS ,4)
+                    
+                                        local txt = ""
+                                        txt = txt .. "C2, " .. tostring(arty:getName()) .. ", identified enemy artillery fire. coordinates:"
+                                        txt = txt .. "\n" .. tostring(MGRS_string) .. "\n" .. tostring(LL_string)                  
+                                        txt = txt .. "\n" .. "Trying to evaluate enemy position. Please wait"
+                                        
+                                        local vars = {"text", txt, 20, nil, nil, nil, coa}
+                    
+                                        multyTypeMessage(vars)
+                    
+                                    end
+                                end
+
+                                local func = function()
+                                    groupfireAtPoint({arty, fpos, 20, "Counter battery fire"})
+                                end
+                                timer.scheduleFunction(func, nil, timer.getTime() + t)
+
+                            else
+                                if AIEN_debugProcessDetail == true then
+                                    env.info((tostring(ModuleName) .. ", counterBattery failed fpos calculation"))
+                                end
+                                return false
+                            end
+
+                        else
+                            if AIEN_debugProcessDetail == true then
+                                env.info((tostring(ModuleName) .. ", counterBattery f=" .. tostring(f) .. ", r=" .. tostring(r) .. " failed"))
+                            end
+                            return false
+                        end
+
+                    end
+
+                else
+                    if AIEN_debugProcessDetail == true then
+                        env.info((tostring(ModuleName) .. ", counterBattery artillery not available"))
+                    end
+                    return false
+                end
+            else
+                if AIEN_debugProcessDetail == true then
+                    env.info((tostring(ModuleName) .. ", counterBattery variable x and z missing"))
+                end
+                return false
+            end
+        else
+            if AIEN_debugProcessDetail == true then
+                env.info((tostring(ModuleName) .. ", counterBattery variables wrong format"))
+            end
+            return false
+        end
+
+    else
+        if AIEN_debugProcessDetail == true then
+            env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return false due to missing variable"))
+        end
+        return false
+    end        
+
+
+end
+
 
 
 --###### DISMOUNT FUNCTIONS ########################################################################
@@ -7937,6 +8090,7 @@ local function populate_Db() -- this one is launched once at mission start and c
 		end
 	end
 
+
     if AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
         dumpTableAIEN("groundgroupsDb.lua", groundgroupsDb, "int")
         dumpTableAIEN("droneunitDb.lua", droneunitDb, "int")
@@ -8539,6 +8693,9 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 -- shooter is indirect fire
                                 if shooter:hasAttribute("Indirect fire") then
                                     s_indirect = 1
+                                    if a_pos and position then
+                                        counterBattery(position, a_pos, group:getCoalition())
+                                    end
                                 end
 
                                 -- shooter is close
