@@ -8693,9 +8693,6 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 -- shooter is indirect fire
                                 if shooter:hasAttribute("Indirect fire") then
                                     s_indirect = 1
-                                    if a_pos and position then
-                                        counterBattery(position, a_pos, group:getCoalition())
-                                    end
                                 end
 
                                 -- shooter is close
