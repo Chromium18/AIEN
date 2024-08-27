@@ -7261,6 +7261,60 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
     end
 end
 
+local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basically spawn smokes around the vehicle and move it for 20-30 meters, trying to hide from enemies
+    -- group is the group subject of the action
+    -- pos is, when needed, the reference position for the actions, or own position
+    -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
+    -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
+    if AIEN_debugProcessDetail then
+        env.info((tostring(ModuleName) .. ", ac_dropSmoke launched"))
+    end    
+    
+    if group and ownPos and sa then
+        
+        local funcDoAction = function()
+            
+            if smoke_source_num > 9 then
+                smoke_source_num = 9
+            elseif smoke_source_num < 4 then
+                smoke_source_num = 4
+            end
+            
+            local points = genSmokePoints(ownPos, aie_random(35, 60), smoke_source_num)
+    
+            if points and #points > 0 then
+    
+                --phase 1 generate smoke
+                for pId, pPos in pairs(points) do
+                    trigger.action.smoke(pPos, 2)
+                end
+    
+                --phase 2 move in a random point very near (20-30 mt)
+                moveToPoint(group, ownPos, 15, 30) 
+                return true
+    
+            else
+                if AIEN_debugProcessDetail then
+                    env.info((tostring(ModuleName) .. ", ac_dropSmoke unable to define smoke points"))
+                end  
+                return false
+            end            
+            
+        end
+        if AIEN_debugProcessDetail == true then
+            env.info((tostring(ModuleName) .. ", ac_dropSmoke group planned reaction"))
+        end
+        local delay = getReactionTime(skill)
+        timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)            
+        
+    else
+        if AIEN_debugProcessDetail then
+            env.info((tostring(ModuleName) .. ", ac_dropSmoke missing variables"))
+        end  
+        return false
+    end
+end
+
 -- summary tablem holds the "scoring model points" for each condition. This can be seen as a decision matrix for evaluate best reaction available.
 -- used for fast-filtering actions availability based on group leader skill. 
 -- It basically is an array, where the actions are listed in order of complexity. 
