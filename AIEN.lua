@@ -8122,103 +8122,92 @@ function AIEN_testActions(groupName, actionName)
         --local gr = Group.getByName(groupName)
 
         -- get group info
-        local gr = nil
-        local saTbl = nil
-        local ownPos = nil
-        local skill = nil
+        local gr 			= nil
+        local saTbl 		= nil
+        local ownPos 		= nil
+        local skill 		= nil
+		local coa 			= nil
         for _, gData in pairs(groundgroupsDb) do
             if groupName == gData.n then
-                
-
-
-
+				gr 		= gData.group
+				saTbl 	= gData.sa
+				ownPos	= gData.sa.pos
+				skill	= gData.skill
+				coa		= gData.coa
             end
         end
 
         -- get action info
+		local actionFunc	= nil
+		local actionResume	= nil
+		local actionMess	= nil
         for _, aData in pairs(actionsDb) do
             if actionName == aData.name then
-                local f = aData.ac_function
-                if f then
-                    f(gr, ownPos, tgtPos, aData.resume, saTbl, skill)
-                end
+				actionFunc = aData.ac_function
+				actionResume = aData.resume
+				actionMess	 = aData.message
             end
         end
 
+		-- filter conditions
+		if gr and saTbl and ownPos and skill and coa and actionFunc then
 
+			-- get nearest enemy
+			local tgtPos = nil
+			local maxDist = 20000
+			local _volume = {
+				id = world.VolumeType.SPHERE,
+				params = {
+					point = ownPos,
+					radius = 20000,
+				},
+			}
 
-
-
-    end
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    local act = nil
-    if gr and gr:isExist() and ownPos and tgtPos and actTbl and saTbl and skill then
-        if actTbl and #actTbl>0 then
-            for aId, aData in pairs(actTbl) do 
-                for _, dbActData in pairs(actionsDb) do
-                    if aData.name == dbActData.name then
-                        local f = dbActData.ac_function
-                        if f then
-                            local success = f(gr, ownPos, tgtPos, dbActData.resume, saTbl, skill)
-                            if AIEN_debugProcessDetail == true then
-                                env.info(("AIEN.executeActions, action success = " .. tostring(success)))
-                            end
-                            if success and success == true then
-                                -- message feedback
-                                if message_feed == true then
-
-                                    local lat, lon = coord.LOtoLL(ownPos)
-                                    if lat and lon then
-
-                                        local LL_string = tostringLL(lat, lon, 0, true)
-
-                                        local txt = ""
-                                        local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. "." .. dbActData.message
-                                        local vars = {"text", txt, 20, nil, nil, nil, gr:getCoalition()}
-
-                                        multyTypeMessage(vars)
-
-                                    end
-                                end
-
-                                return dbActData.name
-                            end
-                        end
-                    end
-                end
+			local _search = function(_obj)
+				pcall(function()
+					if _obj ~= nil and _obj:isExist() and _obj:getCategory() == 1 and _obj:getCoalition() ~= coa then
+						local _objPos = _obj:getPoint()
+						if _objPos then
+							local d = getDist(_objPos, ownPos)
+							if d and d < maxDist then
+								maxDist = d
+								tgtPos = _objPos
+							end
+						end
+					end
+				end)
+			end
+			world.searchObjects(Object.Category.UNIT, _volume, _search)		
+			
+			-- tgtPos might be unnecessary, therefore I don't check it.
+			local success = actionFunc(gr, ownPos, tgtPos, actionResume, saTbl, skill)
+			if AIEN_debugProcessDetail == true then
+                env.info(("AIEN.AIEN_testActions, result" .. tostring(success)))
             end
-        else
-            if AIEN_debugProcessDetail == true then
-                env.info(("AIEN.executeActions, actTbl missing or void"))
-            end
-            return false
-        end
-    else
-        if AIEN_debugProcessDetail == true then
-            env.info(("AIEN.executeActions error, missing one or more variables:"))
-            env.info(("AIEN.executeActions error: " .. tostring(gr)))
-            env.info(("AIEN.executeActions error: " .. tostring(ownPos)))
-            env.info(("AIEN.executeActions error: " .. tostring(tgtPos)))
-            env.info(("AIEN.executeActions error: " .. tostring(actTbl)))
-            env.info(("AIEN.executeActions error: " .. tostring(saTbl)))
-            env.info(("AIEN.executeActions error: " .. tostring(skill)))
-        end
-        return false
+			if success and success == true then
+				-- message feedback
+				if message_feed == true then
+
+					local lat, lon = coord.LOtoLL(ownPos)
+					if lat and lon then
+
+						local LL_string = tostringLL(lat, lon, 0, true)
+
+						local txt = ""
+						local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. "." .. tostring(actionMess)
+						local vars = {"text", txt, 20, nil, nil, nil, gr:getCoalition()}
+
+						multyTypeMessage(vars)
+
+					end
+				end
+
+				return actionName
+			end
+			
+		end
+		return nil
+
     end
 end
 
