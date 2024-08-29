@@ -61,7 +61,7 @@ local message_feed  = true 		-- true/false. If true, each relevant AI action sta
 
 
 -- User bug report: prior to report a bug, please try reproducing it with this variable set to "true"
-local AIEN_debugProcessDetail = false 
+local AIEN_debugProcessDetail = true 
 
 
 
@@ -89,9 +89,11 @@ local outAmmoLowLevel                   = 0.5		        -- factor on total amount
 local intelDbTimeout                    = 1200              -- seconds. Used to cancel intelDb entries for units (not static!), when the time of the contact gathering is more than this value
 local artyFireLastContactThereshold     = 300               -- seconds, max amount of time since last contac to consider an arty target ok
 local taskTimeout                       = 480               -- seconds after which a tasked group is removed from the database
+local targetedTimeout                   = 240               -- seconds after which a targeted variable in inteldb is removed from database
 local disperseActionTime				= 120		        -- seconds
 local counterBatteryRadarRange          = 50000             -- m, capable distance for a radar to perform counter battery calculations
 local counterBatteryPlanDelay           = 240               -- s, will be also randomized on +-35%. Used to define the delay of the planned counter battery fire if available
+local smoke_source_num                  = 7                 -- number, between 4 and 9. Generated smokes for each unit when smoke reaction is called in. Any number below 4 or above 9 will be converted in the nearest threshold
 
 -- SA evaluation variables
 local proxyBuildingDistance				= 4000              -- m, if buildings are whitin this distance value, they are considered "close"
@@ -121,7 +123,7 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "0"
 local SubVersion 						= "9"
-local Build 							= "0114"
+local Build 							= "0117"
 local Date								= "2024.08.18"
 
 --## NOT USED (YET) / TO BE REMOVED
@@ -4458,6 +4460,21 @@ local function dynAdd(ng)
 
 end
 
+local function genSmokePoints(pos, dist, n)
+    local points = {}
+    local angle_step = 360 / n 
+
+    for i = 0, n - 1 do
+       
+        local rad = (i * angle_step) * math.pi / 180
+        local x = pos.x + dist * math.cos(rad)
+        local z = pos.z + dist * math.sin(rad)
+        table.insert(points, {x = x, y = pos.y, z = z})
+    end
+
+    return points
+end
+
 -- desanitized functions (if available), for logging, table printing and debug purposes
 
 -- You should never run DCS desanitized unless specifically knowing the risks. However, if you already do that, for debug purposes AIEN will take advantages of the available io and lfs
@@ -6054,7 +6071,7 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                     if og.coa == coa and og.tasked == false then
                         if og.class == "ARTY" or og.class == "MLRS" then --  or og.class == "MLRS" -- not considering MLRS as they're intended for more area or tactical fire
                             if og.group and og.group:isExist() == true then
-                                local d = getDist(og.pos, tgtPos)
+                                local d = getDist(og.sa.pos, tgtPos)
                                 if d < og.threat*0.9 then
                                     og.tasked = true
                                     og.taskTime = timer.getTime()
@@ -6804,6 +6821,60 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
     end
 end
 
+local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basically spawn smokes around the vehicle and move it for 20-30 meters, trying to hide from enemies
+    -- group is the group subject of the action
+    -- pos is, when needed, the reference position for the actions, or own position
+    -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
+    -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
+    if AIEN_debugProcessDetail then
+        env.info((tostring(ModuleName) .. ", ac_dropSmoke launched"))
+    end    
+    
+    if group and ownPos and sa then
+        
+        local funcDoAction = function()
+            
+            if smoke_source_num > 9 then
+                smoke_source_num = 9
+            elseif smoke_source_num < 4 then
+                smoke_source_num = 4
+            end
+            
+            local points = genSmokePoints(ownPos, aie_random(35, 60), smoke_source_num)
+    
+            if points and #points > 0 then
+    
+                --phase 1 generate smoke
+                for pId, pPos in pairs(points) do
+                    trigger.action.smoke(pPos, 2)
+                end
+    
+                --phase 2 move in a random point very near (20-30 mt)
+                moveToPoint(group, ownPos, 15, 30) 
+                return true
+    
+            else
+                if AIEN_debugProcessDetail then
+                    env.info((tostring(ModuleName) .. ", ac_dropSmoke unable to define smoke points"))
+                end  
+                return false
+            end            
+            
+        end
+        if AIEN_debugProcessDetail == true then
+            env.info((tostring(ModuleName) .. ", ac_dropSmoke group planned reaction"))
+        end
+        local delay = getReactionTime(skill)
+        timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)            
+        
+    else
+        if AIEN_debugProcessDetail then
+            env.info((tostring(ModuleName) .. ", ac_dropSmoke missing variables"))
+        end  
+        return false
+    end
+end
+
 local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this will make the group to run away to the nearest allied ground group
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
@@ -6817,15 +6888,20 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
         local bestPos = nil
         for _, og in pairs(groundgroupsDb) do
             if og.coa == group:getCoalition() then
-                if og.group and og.group:isExist() == true then
-                    local p     = sa.pos
-                    --local td    = og.threat
-                    if p then -- and td
-                        -- within range
-                        local d = getDist(p, ownPos)
-                        if d and d < withrawDist and d > 2000 then
-                            bestPos = p
-                            break -- just the first one available
+                if og.n ~= group:getName() then
+                    if og.group and og.group:isExist() == true then
+                        local p     = og.sa.pos
+                        --local td    = og.threat
+                        if p then -- and td
+                            -- within range
+                            local d = getDist(p, ownPos)
+                            if AIEN_debugProcessDetail == true then
+                                env.info((tostring(ModuleName) .. ", ac_withdraw d " .. tostring(d)))
+                            end
+                            if d and d < withrawDist and d > 2000 then
+                                bestPos = p
+                                break -- just the first one available
+                            end
                         end
                     end
                 end
@@ -7093,10 +7169,10 @@ local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) -- thi
         local bestTd  = 1000 
         local AllyGroup = nil
         for _, og in pairs(groundgroupsDb) do
-            if og.coa == group:getCoalition() then
+            if og.coa == group:getCoalition() and og.n ~= group:getName() then
                 if og.group and og.group:isExist() == true then
                     if supportGroundClasses[og.class] and supportGroundClasses[og.class] > bestVal then
-                        local p     = og.pos
+                        local p     = og.sa.pos
                         local td    = og.threat
                         if p and td then
                             -- within range
@@ -7152,7 +7228,7 @@ local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) -- this wil
         local bestVal = 0
         local bestTd  = 3000 
         for _, og in pairs(groundgroupsDb) do
-            if og.coa == group:getCoalition() then
+            if og.coa == group:getCoalition()  and og.n ~= group:getName() then
                 if og.group and og.group:isExist() == true then
                     if supportCounterAirClasses[og.class] and supportCounterAirClasses[og.class] > bestVal then
                         local p     = og.sa.pos
@@ -7234,7 +7310,7 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
             if og.coa == group:getCoalition() and og.tasked == false then
                 if og.class == "ARTY" then --  or og.class == "MLRS" -- not considering MLRS as they're intended for more area or tactical fire
                     if og.group and og.group:isExist() == true then
-                        local d = getDist(og.pos, tgtPos)
+                        local d = getDist(og.sa.pos, tgtPos)
                         if d < og.threat*0.8 then
                             og.tasked = true
                             og.taskTime = timer.getTime()
@@ -7257,60 +7333,6 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
         if AIEN_debugProcessDetail == true then
             env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return false due to missing variable"))
         end
-        return false
-    end
-end
-
-local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basically spawn smokes around the vehicle and move it for 20-30 meters, trying to hide from enemies
-    -- group is the group subject of the action
-    -- pos is, when needed, the reference position for the actions, or own position
-    -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
-    -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_dropSmoke launched"))
-    end    
-    
-    if group and ownPos and sa then
-        
-        local funcDoAction = function()
-            
-            if smoke_source_num > 9 then
-                smoke_source_num = 9
-            elseif smoke_source_num < 4 then
-                smoke_source_num = 4
-            end
-            
-            local points = genSmokePoints(ownPos, aie_random(35, 60), smoke_source_num)
-    
-            if points and #points > 0 then
-    
-                --phase 1 generate smoke
-                for pId, pPos in pairs(points) do
-                    trigger.action.smoke(pPos, 2)
-                end
-    
-                --phase 2 move in a random point very near (20-30 mt)
-                moveToPoint(group, ownPos, 15, 30) 
-                return true
-    
-            else
-                if AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", ac_dropSmoke unable to define smoke points"))
-                end  
-                return false
-            end            
-            
-        end
-        if AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_dropSmoke group planned reaction"))
-        end
-        local delay = getReactionTime(skill)
-        timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)            
-        
-    else
-        if AIEN_debugProcessDetail then
-            env.info((tostring(ModuleName) .. ", ac_dropSmoke missing variables"))
-        end  
         return false
     end
 end
@@ -7384,6 +7406,7 @@ local actionsDb = {
             ["LOGI"] = 1.9,
             ["INF"] = 0.8,
             ["UNKN"] = 1,
+            ["ARBN"] = 1.4,
         },         
     }, 
 	[2] 	= { -- ac_panic
@@ -7449,6 +7472,7 @@ local actionsDb = {
             ["LOGI"] = 0.2,
             ["INF"] = 0.1,
             ["UNKN"] = 1,
+            ["ARBN"] = 1.8,
         },            
     },     
 	[3] 	= { -- ac_disperse
@@ -7514,9 +7538,76 @@ local actionsDb = {
             ["LOGI"] = 0.2,
             ["INF"] = 0.1,
             ["UNKN"] = 1,
+            ["ARBN"] = 0.4,
         },          
     },     
-	[4] 	= { -- ac_withdraw
+	[4] 	= { -- ac_dropSmoke
+        ["name"] = "ac_dropSmoke",
+        ["ac_function"] = ac_dropSmoke,
+        ["message"] = "Dropping smoke cover",
+        ["resume"] = true,
+        ["w_cat"] = { -- weapon category
+            [0] = 0, -- shell
+            [1] = 5, -- missile
+            [2] = 1, -- rocket
+            [3] = 2, -- bomb
+        }, 				
+        ["s_cat"] = { -- unit category
+            [0] = 3, -- airplane
+            [1] = 5, -- helicopter
+            [2] = 1, -- ground unit
+            [3] = 0, -- ship
+            [4] = 0, -- structure
+        }, 				
+        ["s_indirect"] = { -- unit category
+            [0] = 1, -- not an indirect fire unit
+            [1] = 0, -- is an indirect fire unit
+        }, 			
+        ["s_close"] = { -- shooter is within wpn range
+            [0] = 0, -- not so close
+            [1] = 1, -- close
+        }, 	     	      
+        ["s_fireMis"] = { -- shooter position and speed
+            [0] = 0, -- detailed shooter position not known
+            [1] = 0, -- detailed shooter position known
+        },     
+        ["o_cls"] = { 
+            ["MBT"] = 3,
+            ["ATGM"] = 2,
+            ["MLRS"] = 0,
+            ["ARTY"] = 0,
+            ["MISSILE"] = 0,
+            ["MANPADS"] = 0,
+            ["SHORAD"] = 0,
+            ["AAA"] = 0,
+            ["SAM"] = 0,
+            ["IFV"] = 2,
+            ["APC"] = 2.2,
+            ["RECCE"] = 0,
+            ["LOGI"] = 0,
+            ["INF"] = 0,
+            ["UNKN"] = 0,
+        }, 
+        ["s_cls"] = { 
+            ["MBT"] = 2.1,
+            ["ATGM"] = 1.8,
+            ["MLRS"] = 0,
+            ["ARTY"] = 0,
+            ["MISSILE"] = 0,
+            ["MANPADS"] = 0,
+            ["SHORAD"] = 0,
+            ["AAA"] = 0,
+            ["SAM"] = 0,
+            ["IFV"] = 2,
+            ["APC"] = 2.3,
+            ["RECCE"] = 0,
+            ["LOGI"] = 0,
+            ["INF"] = 0,
+            ["UNKN"] = 0,
+            ["ARBN"] = 3,
+        },          
+    },     
+	[5] 	= { -- ac_withdraw
         ["name"] = "ac_withdraw",
         ["ac_function"] = ac_withdraw,
         ["message"] = "We're moving in safer area",
@@ -7579,9 +7670,10 @@ local actionsDb = {
             ["LOGI"] = 0.2,
             ["INF"] = 0.1,
             ["UNKN"] = 1,
+            ["ARBN"] = 0.7,
         },         
     },     
-    [5] 	= { -- ac_attack
+    [6] 	= { -- ac_attack
         ["name"] = "ac_attack",
         ["ac_function"] = ac_attack,
         ["message"] = "We're going to ambush the enemy",
@@ -7644,9 +7736,10 @@ local actionsDb = {
             ["LOGI"] = 4,
             ["INF"] = 2.4,
             ["UNKN"] = 1,
+            ["ARBN"] = 0,
         },          
     },    
-    [6] 	= { -- ac_coverBuildings
+    [7] 	= { -- ac_coverBuildings
         ["name"] = "ac_coverBuildings",
         ["ac_function"] = ac_coverBuildings,
         ["message"] = "We're moving nearby the closest urbanized area for concealment",
@@ -7709,9 +7802,10 @@ local actionsDb = {
             ["LOGI"] = 0.2,
             ["INF"] = 0.1,
             ["UNKN"] = 1,
+            ["ARBN"] = 2,
         },         
     },
-    [7] 	= { -- ac_groundSupport
+    [8] 	= { -- ac_groundSupport
         ["name"] = "ac_groundSupport",
         ["ac_function"] = ac_groundSupport,
         ["message"] = "We asked for ground support, they're on the way",
@@ -7774,9 +7868,10 @@ local actionsDb = {
             ["LOGI"] = 1.1,
             ["INF"] = 0.4,
             ["UNKN"] = 1,
+            ["ARBN"] = 0,
         },         
     },
-    [8] 	= { -- ac_coverADS
+    [9] 	= { -- ac_coverADS
         ["name"] = "ac_coverADS",
         ["ac_function"] = ac_coverADS,
         ["resume"] = false,
@@ -7839,9 +7934,10 @@ local actionsDb = {
             ["LOGI"] = 1.1,
             ["INF"] = 0.4,
             ["UNKN"] = 1,
+            ["ARBN"] = 5,
         },         
     },
-    [9] 	= { -- ac_fireMissionOnShooter
+    [10] 	= { -- ac_fireMissionOnShooter
         ["name"] = "ac_fireMissionOnShooter",
         ["ac_function"] = ac_fireMissionOnShooter,
         ["resume"] = true,
@@ -7874,8 +7970,8 @@ local actionsDb = {
         ["o_cls"] = { 
             ["MBT"] = 1,
             ["ATGM"] = 1,
-            ["MLRS"] = 1,
-            ["ARTY"] = 1,
+            ["MLRS"] = 3,
+            ["ARTY"] = 3,
             ["MISSILE"] = 1,
             ["MANPADS"] = 1,
             ["SHORAD"] = 1,
@@ -7886,11 +7982,12 @@ local actionsDb = {
             ["RECCE"] = 1,
             ["LOGI"] = 1,
             ["INF"] = 1,
-            ["UNKN"] = 3,
+            ["UNKN"] = 2,
+            ["ARBN"] = 1,
         },  
     },
     --[[
-    [10] 	= {
+    [11] 	= {
         ["name"] = "ac_airSupport",
         ["ac_function"] = ac_airSupport,
         ["w_cat"] = { -- weapon category
@@ -7951,6 +8048,7 @@ local actionsDb = {
             ["LOGI"] = 1,
             ["INF"] = 1,
             ["UNKN"] = 0,
+            ["ARBN"] = 1.9,
         },          
     },
     --]]--
@@ -7958,6 +8056,7 @@ local actionsDb = {
 
 -- the functions that handles the reactions, using priorities
 local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
+    local act = nil
     if gr and gr:isExist() and ownPos and tgtPos and actTbl and saTbl and skill then
         if actTbl and #actTbl>0 then
             for aId, aData in pairs(actTbl) do 
@@ -7987,7 +8086,117 @@ local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
                                     end
                                 end
 
-                                return true
+                                return dbActData.name
+                            end
+                        end
+                    end
+                end
+            end
+        else
+            if AIEN_debugProcessDetail == true then
+                env.info(("AIEN.executeActions, actTbl missing or void"))
+            end
+            return false
+        end
+    else
+        if AIEN_debugProcessDetail == true then
+            env.info(("AIEN.executeActions error, missing one or more variables:"))
+            env.info(("AIEN.executeActions error: " .. tostring(gr)))
+            env.info(("AIEN.executeActions error: " .. tostring(ownPos)))
+            env.info(("AIEN.executeActions error: " .. tostring(tgtPos)))
+            env.info(("AIEN.executeActions error: " .. tostring(actTbl)))
+            env.info(("AIEN.executeActions error: " .. tostring(saTbl)))
+            env.info(("AIEN.executeActions error: " .. tostring(skill)))
+        end
+        return false
+    end
+end
+
+-- this 'global' test function let you test a specific reaction of your choice, using the group name and the reaction name to execute. 
+-- for those action where the shooter is required for evaluation, the test function will look for the nearest target within 20 km.
+-- if data are not gathered, it will print an advice 
+
+function AIEN_testActions(groupName, actionName)
+    
+    if groupName and type(groupName) == "string" and actionName and type(actionName) == "string" then
+        --local gr = Group.getByName(groupName)
+
+        -- get group info
+        local gr = nil
+        local saTbl = nil
+        local ownPos = nil
+        local skill = nil
+        for _, gData in pairs(groundgroupsDb) do
+            if groupName == gData.n then
+                
+
+
+
+            end
+        end
+
+        -- get action info
+        for _, aData in pairs(actionsDb) do
+            if actionName == aData.name then
+                local f = aData.ac_function
+                if f then
+                    f(gr, ownPos, tgtPos, aData.resume, saTbl, skill)
+                end
+            end
+        end
+
+
+
+
+
+    end
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    local act = nil
+    if gr and gr:isExist() and ownPos and tgtPos and actTbl and saTbl and skill then
+        if actTbl and #actTbl>0 then
+            for aId, aData in pairs(actTbl) do 
+                for _, dbActData in pairs(actionsDb) do
+                    if aData.name == dbActData.name then
+                        local f = dbActData.ac_function
+                        if f then
+                            local success = f(gr, ownPos, tgtPos, dbActData.resume, saTbl, skill)
+                            if AIEN_debugProcessDetail == true then
+                                env.info(("AIEN.executeActions, action success = " .. tostring(success)))
+                            end
+                            if success and success == true then
+                                -- message feedback
+                                if message_feed == true then
+
+                                    local lat, lon = coord.LOtoLL(ownPos)
+                                    if lat and lon then
+
+                                        local LL_string = tostringLL(lat, lon, 0, true)
+
+                                        local txt = ""
+                                        local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. "." .. dbActData.message
+                                        local vars = {"text", txt, 20, nil, nil, nil, gr:getCoalition()}
+
+                                        multyTypeMessage(vars)
+
+                                    end
+                                end
+
+                                return dbActData.name
                             end
                         end
                     end
@@ -8207,7 +8416,7 @@ local function update_GROUND()
                 if gData then
                     local remove = false
                     if gData.group then
-                        if gData.group and gData.group:isExist() == true and gData.group:getUnits() and #gData.group:getUnits() > 0 then
+                        if gData.group and gData.group:isExist() == true and gData.group:getUnits() then
 
                             -- filter under attack, SA already gained and need to focus on reactions
                             if not underAttack[phase_index] then 
@@ -8227,7 +8436,7 @@ local function update_GROUND()
                                 end
                             else
                                 local t = timer.getTime() - underAttack[phase_index]
-                                if taskTimeout/2 > t then
+                                if t > taskTimeout/2 then
                                     underAttack[phase_index] = nil
                                     if AIEN_debugProcessDetail then
                                         env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " removed from the under attack table"))
@@ -8240,9 +8449,15 @@ local function update_GROUND()
                             end
 
                         else
+                            if AIEN_debugProcessDetail then
+                                env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " other variables does not exist, remove true"))
+                            end
                             remove = true
                         end
                     else
+                        if AIEN_debugProcessDetail then
+                            env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " gData.group does not exist, remove true"))
+                        end
                         remove = true
                     end
 
@@ -8293,6 +8508,17 @@ local function update_ISR() -- basically clean old ISR data
                         end
                         intelDb[phase_index] = nil
                         phase_keys = createIterator(intelDb) 
+                    else
+                        if tData.targeted then
+                            if type(tData.targeted) == "number" then
+                                if timer.getTime() - tData.targeted >= targetedTimeout then
+                                    if AIEN_debugProcessDetail then
+                                        env.info((tostring(ModuleName) .. ", update_ISR, target id " .. tostring(phase_index) .. " is still targeted. Removing it"))
+                                    end
+                                    intelDb[phase_index].targeted = nil
+                                end
+                            end
+                        end
                     end
                 end
                 phase_index = getNextKey(phase_keys, phase_index)
@@ -8347,7 +8573,7 @@ local function update_DRONE()
 
                     if remove == true then
                         if AIEN_debugProcessDetail then
-                            env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(dData.n) .. " missing. Removing it"))
+                            env.info((tostring(ModuleName) .. ", update_DRONE, group name " .. tostring(dData.n) .. " missing. Removing it"))
                         end
                         droneunitDb[phase_index] = nil
                         phase_keys = createIterator(droneunitDb)                        
@@ -8397,8 +8623,8 @@ local function update_ARTY()
                         
                         if AI_consent == true and groupAllowedForAI(gData.group) == true then -- both coalition AI should be on and group exclusion tag shouldn't be there
                             if gData.group then
-                                if gData.group and gData.group:isExist() == true and gData.sa and gData.tasked == false then
-                                    if not underAttack[phase_index] then
+                                if gData.group and gData.group:isExist() == true and gData.sa then
+                                    if not underAttack[phase_index] and gData.tasked == false then
                                         if gData.class == "MLRS" or gData.class == "ARTY" then
                                             if gData.threat then
                                                 -- check ammo
@@ -8445,7 +8671,7 @@ local function update_ARTY()
                                                             if _obj ~= nil and _obj:isExist() and _obj:getCoalition() ~= gData.coa then
                                                                 local _obj_id = _obj:getID()
                                                                 local report = intelDb[_obj_id]
-                                                                if report and report.speed < 1 then
+                                                                if report and report.speed < 1 and report.targeted == nil then
                                                                     local lastContact = (timer.getTime() - report.record )
                                                                     if lastContact < artyFireLastContactThereshold then
                                                                         local timeFactor = (artyFireLastContactThereshold-lastContact)/artyFireLastContactThereshold
@@ -8460,6 +8686,7 @@ local function update_ARTY()
                                                                                 curPri = pri
                                                                                 firePoint = report.pos
                                                                                 targetId = report.cls
+                                                                                report.targeted = timer.getTime()
                                                                             else
                                                                                 if AIEN_debugProcessDetail then
                                                                                     env.info((tostring(ModuleName) .. ", update_ARTY, target skipped for danger close"))
@@ -8507,7 +8734,7 @@ local function update_ARTY()
 
                         if remove == true then
                             if AIEN_debugProcessDetail then
-                                env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " missing. Removing it"))
+                                env.info((tostring(ModuleName) .. ", update_ARTY, group name " .. tostring(gData.n) .. " missing. Removing it"))
                             end
                             groundgroupsDb[phase_index] = nil
                             phase_keys = createIterator(groundgroupsDb)                        
@@ -8521,7 +8748,7 @@ local function update_ARTY()
         else
             PHASE = "Initialization"
             if AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", update_GROUND, reinizializzazione dei DB, poiché groundgroupsDb sembra vuoto o inesistente!"))
+                env.info((tostring(ModuleName) .. ", update_ARTY, reinizializzazione dei DB, poiché groundgroupsDb sembra vuoto o inesistente!"))
             end
             timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
         end
@@ -8613,6 +8840,7 @@ end
 -- I believe this is self explanatory. Still, the event_hit function holds a lot on reactions and decision making. I'm sorry if it appear confuse, but currently it fits my condition XD.
 
 local function event_hit(unit, shooter, weapon) -- this functions run eacht time a unit gets an hit. Unit only, no statics. That's basically the core for reactions
+
     if unit and reactions == true then
         local vehicle       = unit:hasAttribute("Vehicles")
         local infantry      = unit:hasAttribute("Infantry")
@@ -8675,6 +8903,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                     end
 
                     -- reaction part
+                    local choosenAct = nil
                     if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
                         
                         if AIEN_debugProcessDetail == true then
@@ -8763,7 +8992,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                     if timer.getTime() - s_lastTime < 30 and s_lastVel < 1 then
                                         s_fireMis = 1
                                     end
-                                end	
+                                end
+
                             else -- try to address things when the shooter is unknown, based on weapon and effects
                                 if AIEN_debugProcessDetail == true then
                                     env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown"))
@@ -8814,7 +9044,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                             end 
                             if not a_pos or not s_detected then -- enemy position unknown
                                 if AIEN_debugProcessDetail == true then
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, a_pos is nil, won't be able to move toward the enemy"))
+                                    env.info(("AIEN.event_hit, S_EVENT_HIT, enemy not detected, won't be able to move toward the enemy"))
                                 end	                                  
                                 av_ac[5] = nil
                             end
@@ -8875,11 +9105,23 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                             -- record the attack, for preventing phases to act for 10 mins
                             underAttack[group:getID()] = timer.getTime()
 
-                            executeActions(group, o_pos, a_pos, bc_ac, db_group.sa, db_group.skill)
+                            choosenAct = executeActions(group, o_pos, a_pos, bc_ac, db_group.sa, db_group.skill)
 
                         end
 
                     end
+
+                    -- counter battery part
+                    if choosenAct ~= "ac_fireMissionOnShooter" then
+                        if shooter and shooter:getCategory() == 1 and shooter:isExist() and firemissions == true then
+                            if shooter:getPoint() and position then
+                                counterBattery(position, shooter:getPoint(), group:getCoalition())
+                            end
+                        end
+                    end
+
+
+
                 else
                     if AIEN_debugProcessDetail == true then
                         env.info(("AIEN.event_hit, S_EVENT_HIT, AI consent is false"))
@@ -8961,6 +9203,7 @@ function AIEN.eventHandler:onEvent(event)
         local u = event.target
         local s = event.initiator
 		local w	= event.weapon 
+
         event_hit(u, s, w)
 
     elseif event.id == world.event.S_EVENT_BIRTH then 
