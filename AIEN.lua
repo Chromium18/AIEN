@@ -6640,7 +6640,7 @@ local function groupMountTeam(group)
     end
 end
 
-local function groupDeployTroop(group, nocomeback)
+local function groupDeployTroop(group, nocomeback, exactPos)
     if group and group:isExist() == true and group:getUnits() and #group:getUnits() > 0 then
         local units = group:getUnits()
         for uId, uData in pairs(units) do
