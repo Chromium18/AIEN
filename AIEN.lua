@@ -6785,7 +6785,7 @@ local function ac_accelerate(group, ownPos, tgtPos, resume, sa, skill) -- self-e
         if s and s > 0 then
             local c = group:getController()
             if c then
-                c:setSpeed(30) -- 30 m/s = 108 km/h
+                c:setSpeed(30, true) -- 30 m/s = 108 km/h
                 return true
             else
                 if AIEN_debugProcessDetail then
@@ -6842,8 +6842,8 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
         local funcSetParameters = function()
             local c = group:getController()
             if c then
-                c:setSpeed(30) -- 30 m/s = 108 km/h
-            else
+                c:setSpeed(30, true) -- 30 m/s = 108 km/h
+            end
         end
 
         local delay = getReactionTime(skill)
@@ -6853,35 +6853,10 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
         if AIEN_debugProcessDetail == true then
             env.info((tostring(ModuleName) .. ", ac_panic group planned reaction"))
         end
-        --[[
-        if resume then
-            -- check if there's a route to be followed once action end
-            local destination = nil
-            local points = getMEroute(group)
-            if points and #points > 1 then
-                local last = #points
-                local data = points[last] 
-                if data and type(data) == "table" then
-                    destination = { x = data.x, y = land.getHeight({x = data.x, y = data.y}), z = data.y}
-                end
-            end
-            if not destination then
-                destination = ownPos
-            end            
-            local funcresumeRoute = function()
-                moveToPoint(group, destination, 200, 10)
-            end
-            if AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_panic group planning coming back"))
-            end
-            timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(240, 900))     
-        end
-        --]]
 
         return true
-    else
-        return false
     end
+    return false
 end
 
 local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basically spawn smokes around the vehicle and move it for 20-30 meters, trying to hide from enemies
