@@ -93,7 +93,7 @@ local targetedTimeout                   = 240               -- seconds after whi
 local disperseActionTime				= 120		        -- seconds
 local counterBatteryRadarRange          = 50000             -- m, capable distance for a radar to perform counter battery calculations
 local counterBatteryPlanDelay           = 240               -- s, will be also randomized on +-35%. Used to define the delay of the planned counter battery fire if available
-local smoke_source_num                  = 7                 -- number, between 4 and 9. Generated smokes for each unit when smoke reaction is called in. Any number below 4 or above 9 will be converted in the nearest threshold
+local smoke_source_num                  = 5                 -- number, between 4 and 9. Generated smokes for each unit when smoke reaction is called in. Any number below 4 or above 9 will be converted in the nearest threshold
 
 -- SA evaluation variables
 local proxyBuildingDistance				= 4000              -- m, if buildings are whitin this distance value, they are considered "close"
@@ -123,8 +123,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "0"
 local SubVersion 						= "9"
-local Build 							= "0117"
-local Date								= "2024.08.18"
+local Build 							= "0122"
+local Date								= "2024.09.08"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -4049,6 +4049,34 @@ local function getDir(vec, point)
 	return dir
 end
 
+local function getGroupSpeed(group)
+    local g = groupTableCheck(group)
+    if g then
+        local units = g:getUnits()
+        if units and #units > 0 then
+            local s = 0
+            local ms = 1000
+            local u = 0
+            for u, uData in pairs(units) do
+                u = u + 1
+                local us = vecmag(uData:getVelocity())
+                if us and us >= 0 then
+                    s = s + us
+                    if us < ms then
+                        ms = us
+                    end
+                end
+            end
+            return s, ms
+        else
+            return nil
+        end
+    else
+        return nil
+    end
+end
+
+
 local function toDegree(angle)
 	return angle*180/math.pi
 end
@@ -4469,7 +4497,7 @@ local function genSmokePoints(pos, dist, n)
         local rad = (i * angle_step) * math.pi / 180
         local x = pos.x + dist * math.cos(rad)
         local z = pos.z + dist * math.sin(rad)
-        table.insert(points, {x = x, y = pos.y, z = z})
+        table.insert(points, {x = x, y = pos.y-50, z = z})
     end
 
     return points
@@ -6378,7 +6406,7 @@ local function defineTroopsNumber(unit)
     return 0
 end
 
-local function deployTroops(unit)
+local function deployTroops(unit, exactPos)
 	
     local _point = unit:getPoint()
     local _onboard = mountedDb[unit:getID()]
@@ -6417,17 +6445,22 @@ local function deployTroops(unit)
             local _spawnedGroup = Group.getByName(dynAdd(_group).name)
 
             if _spawnedGroup then
+                if exactPos then
+                    if isMortar == false then
+                        orderInfantryToMoveToPoint(_spawnedGroup, exactPos)
+                    end
+                else
+                    local _enemyPos = findNearestEnemy(_coa, _point, infantrySearchDist)
 
-                local _enemyPos = findNearestEnemy(_coa, _point, infantrySearchDist)
+                    if _enemyPos and isMortar == false then
+                        orderInfantryToMoveToPoint(_spawnedGroup, _enemyPos)
+                    end
 
-                if _enemyPos and isMortar == false then
-                    orderInfantryToMoveToPoint(_spawnedGroup, _enemyPos)
+                    mountedDb[unit:getID()] = nil
+                    if AIEN_debugProcessDetail == true then
+                        env.info(("AIEN.deployTroops units deployed for unit " .. tostring(unit:getName())))
+                    end	
                 end
-
-                mountedDb[unit:getID()] = nil
-                if AIEN_debugProcessDetail == true then
-                    env.info(("AIEN.deployTroops units deployed for unit " .. tostring(unit:getName())))
-                end	
                 return _spawnedGroup
             end
         end
@@ -6648,7 +6681,7 @@ local function groupDeployTroop(group, nocomeback, exactPos)
             local id = uData:getID()
             if id then
                 if mountedDb[uData:getID()] then
-                    deployTroops(uData)
+                    deployTroops(uData, exactPos)
 
                     if not nocomeback then
                         timer.scheduleFunction(groupMountTeam, group, timer.getTime() + remountTime)
@@ -6741,12 +6774,33 @@ end
 --]]--
 
 
-local function ac_nothing(group, ownPos, tgtPos, resume, sa, skill) -- self-explanatory
-    -- does literally nothing
+local function ac_accelerate(group, ownPos, tgtPos, resume, sa, skill) -- self-explanatory
+    -- doesn't stop a moving group, it simply set its speed as fast as possible. If the group is stationary, it does nothing
     if AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_nothing launched, return true with no actions"))
+        env.info((tostring(ModuleName) .. ", ac_accelerate launched"))
     end    
-    return true
+    
+    if group then
+        local s, ms = getGroupSpeed(group)
+        if s and s > 0 then
+            local c = group:getController()
+            if c then
+                c:setSpeed(30) -- 30 m/s = 108 km/h
+                return true
+            else
+                if AIEN_debugProcessDetail then
+                    env.info((tostring(ModuleName) .. ", ac_accelerate controller not found"))
+                end    
+                return false
+            end
+        else
+            if AIEN_debugProcessDetail then
+                env.info((tostring(ModuleName) .. ", ac_accelerate failed to get speed, returning true assuming stationary"))
+            end  
+            return true
+        end
+    end
+    return false
 end
 
 local function ac_disperse(group, ownPos, tgtPos, resume, sa, skill) -- basically simply allow for dispersion
@@ -6784,18 +6838,27 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
         local funcDoAction = function()
             moveToPoint(group, ownPos, repositionDistance*10, repositionDistance*5) 
         end
+
+        local funcSetParameters = function()
+            local c = group:getController()
+            if c then
+                c:setSpeed(30) -- 30 m/s = 108 km/h
+            else
+        end
+
+        local delay = getReactionTime(skill)
+        timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)    
+        timer.scheduleFunction(funcSetParameters, nil, timer.getTime() + delay + 5)  
+
         if AIEN_debugProcessDetail == true then
             env.info((tostring(ModuleName) .. ", ac_panic group planned reaction"))
         end
-        local delay = getReactionTime(skill)
-        timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)          
-
         --[[
         if resume then
             -- check if there's a route to be followed once action end
             local destination = nil
             local points = getMEroute(group)
-            if points then
+            if points and #points > 1 then
                 local last = #points
                 local data = points[last] 
                 if data and type(data) == "table" then
@@ -6839,31 +6902,53 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
             elseif smoke_source_num < 4 then
                 smoke_source_num = 4
             end
+
+            local units = group:getUnits()
+            local smoked = false
+            if units then
+                for uId, uData in pairs(units) do
+                    local uPos = uData:getPoint()
+
+                    local points = genSmokePoints(uPos, aie_random(15, 30), smoke_source_num)
             
-            local points = genSmokePoints(ownPos, aie_random(35, 60), smoke_source_num)
-    
-            if points and #points > 0 then
-    
-                --phase 1 generate smoke
-                for pId, pPos in pairs(points) do
-                    trigger.action.smoke(pPos, 2)
+                    if points and #points > 0 then
+                        
+                        if AIEN_debugProcessDetail == true then
+                            env.info((tostring(ModuleName) .. ", ac_dropSmoke points " .. tostring(#points)))
+                        end
+
+                        --phase 1 generate smoke
+                        for pId, pPos in pairs(points) do
+                            local f = function()
+                                trigger.action.smoke(pPos, 2)
+                            end
+                            timer.scheduleFunction(f, nil, timer.getTime() + aie_random(1, 5)) 
+                        end
+            
+                        --phase 2 move in a random point very near (20-30 mt)
+                        smoked = true
+            
+                    else
+                        if AIEN_debugProcessDetail then
+                            env.info((tostring(ModuleName) .. ", ac_dropSmoke unable to define smoke points"))
+                        end  
+                        --return false
+                    end   
                 end
-    
-                --phase 2 move in a random point very near (20-30 mt)
-                moveToPoint(group, ownPos, 15, 30) 
+            end
+            
+            if smoked == true then
+                moveToPoint(group, ownPos, 5, 14) 
+                if AIEN_debugProcessDetail == true then
+                    env.info((tostring(ModuleName) .. ", ac_dropSmoke group planned reaction"))
+                end
                 return true
-    
             else
-                if AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", ac_dropSmoke unable to define smoke points"))
-                end  
                 return false
-            end            
+            end
             
         end
-        if AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_dropSmoke group planned reaction"))
-        end
+
         local delay = getReactionTime(skill)
         timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)            
         
@@ -6886,6 +6971,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
     
     if group and ownPos then
         local bestPos = nil
+        local maxDist = withrawDist
         for _, og in pairs(groundgroupsDb) do
             if og.coa == group:getCoalition() then
                 if og.n ~= group:getName() then
@@ -6898,9 +6984,10 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
                             if AIEN_debugProcessDetail == true then
                                 env.info((tostring(ModuleName) .. ", ac_withdraw d " .. tostring(d)))
                             end
-                            if d and d < withrawDist and d > 2000 then
+                            if d and d < maxDist and d > 2000 then
                                 bestPos = p
-                                break -- just the first one available
+                                maxDist = d
+                                --break -- just the first one available
                             end
                         end
                     end
@@ -6910,7 +6997,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
 
         if bestPos then 
             local funcDoAction = function()
-                moveToPoint(group, bestPos, repositionDistance*1.5, repositionDistance*0.5) 
+                moveToPoint(group, bestPos, repositionDistance*1.5, repositionDistance*0.5, false) 
             end
             if AIEN_debugProcessDetail == true then
                 env.info((tostring(ModuleName) .. ", ac_withdraw group planned reaction"))
@@ -6922,7 +7009,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
                 -- check if there's a route to be followed once action end
                 local destination = nil
                 local points = getMEroute(group)
-                if points then
+                if points and #points > 1 then
                     local last = #points
                     local data = points[last] 
                     if data and type(data) == "table" then
@@ -6967,7 +7054,7 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
     
     if group and tgtPos then
         local funcDoAction = function()
-            moveToPoint(group, tgtPos, 300, 500) 
+            moveToPoint(group, tgtPos, 300, 500, false) 
         end
         if AIEN_debugProcessDetail == true then
             env.info((tostring(ModuleName) .. ", ac_attack group planned reaction"))
@@ -6975,15 +7062,12 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
         local delay = getReactionTime(skill)
         timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
         groupGoShoot(group)
-        if dismount == true then
-            groupDeployTroop(group, false)
-        end
 
         if resume then
             -- check if there's a route to be followed once action end
             local destination = nil
             local points = getMEroute(group)
-            if points then
+            if points and #points > 1 then
                 local last = #points
                 local data = points[last] 
                 if data and type(data) == "table" then
@@ -6998,6 +7082,9 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
             end
             if AIEN_debugProcessDetail == true then
                 env.info((tostring(ModuleName) .. ", ac_attack group planning coming back"))
+            end
+            if dismount == true then
+                groupDeployTroop(group, false, destination)
             end
             timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(600, 900))     
         end
@@ -7096,7 +7183,7 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                 
                 if dest then
                     local funcDoAction = function()
-                        moveToPoint(group, dest, repositionDistance*1.5, repositionDistance*0.5) 
+                        moveToPoint(group, dest, repositionDistance, repositionDistance*0.2) 
                     end
                     if AIEN_debugProcessDetail == true then
                         env.info((tostring(ModuleName) .. ", ac_coverBuildings group planned reaction"))
@@ -7108,7 +7195,7 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                         -- check if there's a route to be followed once action end
                         local destination = nil
                         local points = getMEroute(group)
-                        if points then
+                        if points and #points > 1 then
                             local last = #points
                             local data = points[last] 
                             if data and type(data) == "table" then
@@ -7119,10 +7206,10 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                             destination = ownPos
                         end            
                         local funcresumeRoute = function()
+                            if AIEN_debugProcessDetail == true then
+                                env.info((tostring(ModuleName) .. ", ac_coverBuildings group planning coming back to original destination"))
+                            end
                             moveToPoint(group, destination, 200, 10)
-                        end
-                        if AIEN_debugProcessDetail == true then
-                            env.info((tostring(ModuleName) .. ", ac_coverBuildings group planning coming back to original destination"))
                         end
                         timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(420, 900))     
                     end                    
@@ -7261,7 +7348,7 @@ local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) -- this wil
                 -- check if there's a route to be followed once action end
                 local destination = nil
                 local points = getMEroute(group)
-                if points then
+                if points and #points > 1 then
                     local last = #points
                     local data = points[last] 
                     if data and type(data) == "table" then
@@ -7343,9 +7430,9 @@ end
 -- This way, the skill could be converted into a number, and that number will became the maximum index available.
 -- The higher the skill, the higher the index, the higher the actions that could be evaluated
 local actionsDb = {
-	[1] 	= { -- ac_nothing
-        ["name"] = "ac_nothing",
-        ["ac_function"] = ac_nothing,
+	[1] 	= { -- ac_accelerate
+        ["name"] = "ac_accelerate",
+        ["ac_function"] = ac_accelerate,
         ["message"] = "",
         ["resume"] = true,
         ["w_cat"] = { -- weapon category
@@ -7985,6 +8072,24 @@ local actionsDb = {
             ["UNKN"] = 2,
             ["ARBN"] = 1,
         },  
+        ["s_cls"] = { 
+            ["MBT"] = 1.8,
+            ["ATGM"] = 1.4,
+            ["MLRS"] = 3,
+            ["ARTY"] = 2.5,
+            ["MISSILE"] = 3,
+            ["MANPADS"] = 3,
+            ["SHORAD"] = 1.3,
+            ["AAA"] = 1,
+            ["SAM"] = 0.9,
+            ["IFV"] = 2,
+            ["APC"] = 2.2,
+            ["RECCE"] = 1.7,
+            ["LOGI"] = 1.1,
+            ["INF"] = 0.4,
+            ["UNKN"] = 1,
+            ["ARBN"] = 5,
+        },          
     },
     --[[
     [11] 	= {
@@ -8182,7 +8287,7 @@ function AIEN_testActions(groupName, actionName)
 			-- tgtPos might be unnecessary, therefore I don't check it.
 			local success = actionFunc(gr, ownPos, tgtPos, actionResume, saTbl, skill)
 			if AIEN_debugProcessDetail == true then
-                env.info(("AIEN.AIEN_testActions, result" .. tostring(success)))
+                env.info(("AIEN.AIEN_testActions, result " .. tostring(success)))
             end
 			if success and success == true then
 				-- message feedback
@@ -8316,6 +8421,9 @@ local function populate_Db() -- this one is launched once at mission start and c
                         end
                     end
                 end
+
+                -- set prevent disperse
+                groupPreventDisperse(gp)
 
 			end
 		end
@@ -9139,6 +9247,7 @@ local function event_birth(initiator)
                         local c = getGroupClass(gp)
                         local det, thr = getRanges(gp)
                         local s = getGroupSkillNum(gp)
+                        groupPreventDisperse(gp)
                         --env.info((tostring(ModuleName) .. ", event_birth: s " .. tostring(s)))
                         groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition(), detection = det, threat = thr, tasked = false, skill = s}
                         --env.info((tostring(ModuleName) .. ", event_birth: adding to groundgroupsDb " .. tostring(gp:getName() )))
