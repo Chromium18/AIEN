@@ -5823,6 +5823,36 @@ end
 
 
 --## ROUTE AND PATHFINDING
+
+local function checkValidTerrainSurface(vec3)
+    if vec3 then
+        if type(vec3) == 'table' then -- assuming name
+            if vec3.x and vec3.y and vec3.z then
+                local l = land.getSurfaceType({x = vec3.x, y = vec3.z})
+                if l then
+                    if l == 1 or l == 4 or l == 5 then
+                        return true
+                    else
+                        return false
+                    end
+                else
+                    env.info((tostring(ModuleName) .. ", checkValidDestination: l not identified!"))
+                    return false
+                end
+            else
+                env.info((tostring(ModuleName) .. ", checkValidDestination: wrong vector format"))
+                return false
+            end
+        else
+            env.info((tostring(ModuleName) .. ", checkValidDestination: wrong variable"))
+            return false
+        end
+    else
+        env.info((tostring(ModuleName) .. ", checkValidDestination: missing variable"))
+        return false
+    end
+end
+
 local function getMEroute(group) -- basically a copy of getGroupRoute
     -- refactor to search by groupId and allow groupId and groupName as inputs
 	local gpId = nil
@@ -5921,6 +5951,13 @@ local function goRoute(group, path)
 end
 
 local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, reqUseRoad, formation, haltContact, issuedByClient, clientCoa, groupSpeed) -- move the group to a point or, if the point is missing, to a random position at about 2 km
+    if checkValidTerrainSurface(Vec3destination) == false then
+        local newX, newZ = land.getClosestPointOnRoads('roads', Vec3destination.x, Vec3destination.z)
+        local newY = land.getHeight({x = newX, y = newZ})
+        Vec3destination = {x = newX, y = newY, z = newZ}
+        env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination corrected for land"))
+    end
+    
     if group and group:isExist() == true then	   	
 
         local unit1 = group:getUnit(1)
