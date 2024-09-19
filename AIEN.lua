@@ -8228,13 +8228,16 @@ local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
                                 if message_feed == true then
 
                                     local lat, lon = coord.LOtoLL(ownPos)
+                                    local MGRS = coord.LLtoMGRS(coord.LOtoLL(vec3))
                                     if lat and lon then
 
                                         local LL_string = tostringLL(lat, lon, 0, true)
+                                        local MGRS_string = tostringMGRS(MGRS ,4)
+
 
                                         local txt = ""
-                                        local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. "." .. dbActData.message
-                                        local vars = {"text", txt, 20, nil, nil, nil, gr:getCoalition()}
+                                        local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. ", " .. tostring(MGRS_string) .. "." .. dbActData.message
+                                        local vars = {"text", txt, 30, nil, nil, nil, gr:getCoalition()}
 
                                         multyTypeMessage(vars)
 
