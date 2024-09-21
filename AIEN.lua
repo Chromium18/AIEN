@@ -121,10 +121,10 @@ AIEN                                	= {}
 
 --## LOCAL GENERAL INFORMATIONS VARIABLES (mostly used for debug log and info)
 local ModuleName  						= "AIEN"
-local MainVersion 						= "0"
-local SubVersion 						= "9"
-local Build 							= "0122"
-local Date								= "2024.09.08"
+local MainVersion 						= "1"
+local SubVersion 						= "0"
+local Build 							= "0127"
+local Date								= "2024.09.21"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
