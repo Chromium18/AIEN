@@ -123,8 +123,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0127"
-local Date								= "2024.09.21"
+local Build 							= "0128"
+local Date								= "2024.09.22"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -8228,7 +8228,7 @@ local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
                                 if message_feed == true then
 
                                     local lat, lon = coord.LOtoLL(ownPos)
-                                    local MGRS = coord.LLtoMGRS(coord.LOtoLL(vec3))
+                                    local MGRS = coord.LLtoMGRS(coord.LOtoLL(ownPos))
                                     if lat and lon then
 
                                         local LL_string = tostringLL(lat, lon, 0, true)
