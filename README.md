@@ -26,4 +26,3 @@ AIEN controls ground units. Whilst AIEN works with the following script framewor
 
 Brief instruction video: [**Youtube link here**](https://youtu.be/bsbwFJlsmqg)
 For a comprehensive and detailed explanation about the mod, please refer to the [**User manual here**](https://docs.google.com/document/d/1w7RJDScHOWXYcAAL94GIqnlTb_YtBNbuplIL_kLZ1dI/edit?usp=drive_link)
-Link for supporting the development of this and DSMC, if you think the script deserves it: [**Paypal link here**](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=QZB5Q7P3DJP6U&item_name=DSMC&currency_code=EUR)
