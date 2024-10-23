@@ -9018,7 +9018,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                 if AI_consent == true then -- check
 
                     -- suppression part
-                    if shooter and shooter:isExist() and armoured and suppression == true then
+                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and armoured and suppression == true then
                         local suppressEffects = false
                         if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
                             suppressEffects = true
