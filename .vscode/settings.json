@@ -1,0 +1,14 @@
+{
+    "Lua.diagnostics.globals": [
+        "env",
+        "DSMC_STTS_rAM",
+        "DSMC_STTS_rFM",
+        "EMBD",
+        "StaticObject",
+        "land",
+        "Group"
+    ],
+    "Lua.diagnostics.disable": [
+        "undefined-field"
+    ]
+}

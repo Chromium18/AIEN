@@ -123,8 +123,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0128"
-local Date								= "2024.09.22"
+local Build 							= "0130"
+local Date								= "2024.11.05"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -3812,15 +3812,19 @@ local function getRandPointInCircle(point, radius, innerRadius)
     return rndCoord
 end
 
-local function getRandTerrainPointInCircle(var, radius, innerRadius)
+local function getRandTerrainPointInCircle(var, radius, innerRadius, requestV3)
     local point = vec3Check(var)	
     if point and radius and innerRadius then
-        
         for i = 1, 5 do
             local coordRun = getRandPointInCircle(point, radius, innerRadius)
             local destlandtype = land.getSurfaceType({coordRun.x, coordRun.z})
             if destlandtype == 1 or destlandtype == 4 then
-                return coordRun
+                if requestV3 == true then
+                    local c2 = {x = coordRun.x, y = land.getHeight({x = coordRun.x, y = coordRun.y}), z = coordRun.y}
+                    return c2
+                else
+                    return coordRun
+                end
             end
         end
         return nil -- this means that no valid result has found
@@ -5831,9 +5835,9 @@ local function checkValidTerrainSurface(vec3)
                 local l = land.getSurfaceType({x = vec3.x, y = vec3.z})
                 if l then
                     if l == 1 or l == 4 or l == 5 then
-                        return true
+                        return true, l
                     else
-                        return false
+                        return false, l
                     end
                 else
                     env.info((tostring(ModuleName) .. ", checkValidDestination: l not identified!"))
@@ -5951,14 +5955,23 @@ local function goRoute(group, path)
 end
 
 local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, reqUseRoad, formation, haltContact, issuedByClient, clientCoa, groupSpeed) -- move the group to a point or, if the point is missing, to a random position at about 2 km
-    if checkValidTerrainSurface(Vec3destination) == false then
-        local newX, newZ = land.getClosestPointOnRoads('roads', Vec3destination.x, Vec3destination.z)
-        local newY = land.getHeight({x = newX, y = newZ})
-        Vec3destination = {x = newX, y = newY, z = newZ}
-        env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination corrected for land"))
+    
+    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination x = " .. tostring(Vec3destination.x)))
+    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination y = " .. tostring(Vec3destination.y)))
+    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination z = " .. tostring(Vec3destination.z)))
+    if Vec3destination then
+        local vt, vv = checkValidTerrainSurface(Vec3destination) 
+        if vt == false then
+            local newX, newZ = land.getClosestPointOnRoads('roads', Vec3destination.x, Vec3destination.z)
+            local newY = land.getHeight({x = newX, y = newZ})
+            Vec3destination = {x = newX, y = newY, z = newZ}
+            env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination corrected for land, was type " .. tostring(vv)))
+        else
+            env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination is identified as land, type " .. tostring(vv)))
+        end
     end
     
-    if group and group:isExist() == true then	   	
+    if group and group:isExist() == true then
 
         local unit1 = group:getUnit(1)
         if unit1 then
@@ -5974,7 +5987,7 @@ local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, 
 
             if clientCoa and issuedByClient then
                 local latitude, longitude, elev = coord.LOtoLL(point)
-                local LL_string = tostringLL(latitude, longitude, 0, true)            
+                local LL_string = tostringLL(latitude, longitude, 0, true)
                 msg = msg .. " move to " .. tostring(LL_string) .. "\n"
             end
 
@@ -6068,7 +6081,6 @@ local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, 
                 end                
 
                 local path = {}
-                
                 if not rndCoord then
                     rndCoord = getRandTerrainPointInCircle(point, radius, innerRadius)
                 end
@@ -6119,6 +6131,7 @@ end
 
 
 --###### COUNTER BATTERY FIRE ######################################################################
+
 local function counterBattery(hitPos, tgtPos, coa) -- this function emulates counter battery fire
     -- this function is not about simulating the counter battery fire process, which involves projectiles radar detection,
     -- balistic calculations and then defining a shooter position. Instead, for performance purposes, the process is "hinted" using the following method, and start only if the shooter is an "indirect fire" attributes units
@@ -6791,6 +6804,7 @@ local function groupDeployManpad(group) -- this won't trigger the deploy of any 
 end
 
 -- ## externally access command, by script
+
 function AIEN_groupDeploy(gName, noremount) -- this one is global, to provide any user to make a group manually dismount via script or trigger action (do script) if remountVar is true, the dismounted group will go back to its vehicle after about 10 mins.
     if gName and type(gName) == "string" then
         local g = Group.getByName(gName)
@@ -6878,7 +6892,15 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
 
         local funcDoAction = function()
             if group:isExist() then
-                moveToPoint(group, ownPos, repositionDistance*10, repositionDistance*5)
+                local np = nil
+                while not np do
+                    if AIEN_debugProcessDetail then
+                        env.info((tostring(ModuleName) .. ", ac_panic creating point..."))
+                    end    
+                    np = getRandTerrainPointInCircle(ownPos, repositionDistance*10, repositionDistance*5, true)
+                end
+                
+                moveToPoint(group, np, 50, 5)
             end 
         end
 
@@ -6914,7 +6936,28 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
     end    
     
     if group and group:isExist() and ownPos and sa then
-        
+
+        local units = group:getUnits()
+        if units then
+            -- check at least 50% units can use smoke
+            local numTot = 0
+            local numSmk = 0
+            for iId, iData in pairs(units) do
+                numTot = numTot + 1
+                if iData:hasAttribute("HeavyArmoredUnits") or iData:hasAttribute("IFV") then
+                    numSmk = numSmk +1
+                end
+            end
+            if numTot > 0 then
+                if numSmk/numTot < 0.5 then
+                    if AIEN_debugProcessDetail == true then
+                        env.info((tostring(ModuleName) .. ", ac_dropSmoke dropped cause less than 50% units can do that"))
+                    end
+                    return false
+                end
+            end
+        end
+
         local funcDoAction = function()
             
             if group:isExist() then
@@ -6928,34 +6971,40 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
                 local units = group:getUnits()
                 local smoked = false
                 if units then
+
+                    -- plan smoke
                     for uId, uData in pairs(units) do
-                        local uPos = uData:getPoint()
 
-                        local points = genSmokePoints(uPos, aie_random(15, 30), smoke_source_num)
-                
-                        if points and #points > 0 then
-                            
-                            if AIEN_debugProcessDetail == true then
-                                env.info((tostring(ModuleName) .. ", ac_dropSmoke points " .. tostring(#points)))
-                            end
+                        if uData:hasAttribute("HeavyArmoredUnits") or uData:hasAttribute("IFV") then
 
-                            --phase 1 generate smoke
-                            for pId, pPos in pairs(points) do
-                                local f = function()
-                                    trigger.action.smoke(pPos, 2)
+                            local uPos = uData:getPoint()
+
+                            local points = genSmokePoints(uPos, aie_random(15, 30), smoke_source_num)
+                    
+                            if points and #points > 0 then
+                                
+                                if AIEN_debugProcessDetail == true then
+                                    env.info((tostring(ModuleName) .. ", ac_dropSmoke points " .. tostring(#points)))
                                 end
-                                timer.scheduleFunction(f, nil, timer.getTime() + aie_random(1, 5)) 
-                            end
-                
-                            --phase 2 move in a random point very near (20-30 mt)
-                            smoked = true
-                
-                        else
-                            if AIEN_debugProcessDetail then
-                                env.info((tostring(ModuleName) .. ", ac_dropSmoke unable to define smoke points"))
-                            end  
-                            --return false
-                        end   
+
+                                --phase 1 generate smoke
+                                for pId, pPos in pairs(points) do
+                                    local f = function()
+                                        trigger.action.smoke(pPos, 2)
+                                    end
+                                    timer.scheduleFunction(f, nil, timer.getTime() + aie_random(1, 5)) 
+                                end
+                    
+                                --phase 2 move in a random point very near (20-30 mt)
+                                smoked = true
+                    
+                            else
+                                if AIEN_debugProcessDetail then
+                                    env.info((tostring(ModuleName) .. ", ac_dropSmoke unable to define smoke points"))
+                                end  
+                                --return false
+                            end   
+                        end
                     end
                 end
                 
@@ -6964,18 +7013,13 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
                     if AIEN_debugProcessDetail == true then
                         env.info((tostring(ModuleName) .. ", ac_dropSmoke group planned reaction"))
                     end
-                    return true
-                else
-                    return false
                 end
-            else
-                return false
             end
-            
         end
 
         local delay = getReactionTime(skill)
-        timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)            
+        timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)    
+        return true  
         
     else
         if AIEN_debugProcessDetail then
@@ -9018,7 +9062,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                 if AI_consent == true then -- check
 
                     -- suppression part
-                    if shooter and shooter:isExist() and armoured and suppression == true then
+                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and armoured and suppression == true then
                         local suppressEffects = false
                         if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
                             suppressEffects = true
@@ -9208,6 +9252,9 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                             end
                             if s_cls ~= "ARBN" then -- shooter is not airborne
                                 av_ac[8] = nil -- remove counter ADS
+                            end
+                            if not unit:hasAttribute("Armored vehicles") then
+                                av_ac[4] = nil -- remove drop smoke
                             end
                         
                             -- filter available actions by skill
