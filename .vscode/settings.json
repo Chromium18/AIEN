@@ -6,9 +6,21 @@
         "EMBD",
         "StaticObject",
         "land",
-        "Group"
+        "Group",
+        "Unit",
+        "world",
+        "Object",
+        "trigger",
+        "coord",
+        "coalition"
     ],
     "Lua.diagnostics.disable": [
-        "undefined-field"
+        "undefined-field",
+        "deprecated",
+        "unused-function",
+        "undefined-global",
+        "lowercase-global",
+        "cast-local-type",
+        "missing-return"
     ]
 }

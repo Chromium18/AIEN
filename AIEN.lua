@@ -3916,7 +3916,7 @@ local function findGroupInRange(support_point, attribute, distance, coalition)
                 end
             end
 
-            if funcCheck(attribute) == true then
+            if funcCheck and funcCheck(attribute) == true then
                 
                 local proceed = true
                 if coalition then
@@ -4730,9 +4730,11 @@ if AIEN_io and AIEN_lfs then
             else
                 str = IntegratedserializeWithCycles(fname, tabledata)
             end
-    
-            f:write(str)
-            f:close()
+            
+            if f then
+                f:write(str)
+                f:close()
+            end
 		end
 	end		
 
@@ -9119,7 +9121,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                 if AI_consent == true then -- check
 
                     -- suppression part
-                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and armoured and suppression == true then
+                    if shooter and shooter:isExist() and shooter:getCategory() == 1 and armoured and suppression == true then
                         local suppressEffects = false
                         if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
                             suppressEffects = true
@@ -9133,7 +9135,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                     end
 
                     -- dismount part
-                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and dismount == true then
+                    if shooter and shooter:isExist() and shooter:getCategory() == 1 and dismount == true then
                         if not underAttack[group:getID()] then
                             if shooter:hasAttribute("Air") then
                                 timer.scheduleFunction(groupDeployManpad, group, timer.getTime() + aie_random(8, 15))
