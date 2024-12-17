@@ -45,20 +45,21 @@ Suggestion, ideas:
 --## USER CUSTOMIZATION VARIABLES ##
 
 -- coalition affected by the script
-local blueAI 		= true 		-- true/false. If true, the AI enhancement will be applied to the blue coalition ground groups, else, no script effect will take place
-local redAI			= true 		-- true/false. If true, the AI enhancement will be applied to the red  coalition ground groups, else, no script effect will take place
+local blueAI 		        = true 		-- true/false. If true, the AI enhancement will be applied to the blue coalition ground groups, else, no script effect will take place
+local redAI			        = true 		-- true/false. If true, the AI enhancement will be applied to the red  coalition ground groups, else, no script effect will take place
 
 -- Action sets allowed.
-local firemissions  = true      -- true/false. If true, each artillery in the coalition will fire automatically at available targets provided by other ground units and drones
-local reactions     = true      -- true/false. If true, when a mover group gets an hit, it will react accordingly to its skills and to its situational awareness, not staying there taking hits without doing nothing
-local suppression   = true      -- true/false. If true, once a group take fire from arty or air and it's not armoured, it will be suppressed for 15-45 seconds and won't return fire. Require reactions to be set as 'true'
-local dismount 		= true 		-- true/false. //BEWARE: CAN AFFECT PERFORMANCES ON LOW END SYSTEMS // Thanks to MBot's original script, if true AI ground units with infantry transport capabilities (mainly APC/IFV/Trucks) will dismount soldiers with rifle, rpg and sometimes mandpads when appropriate
+local firemissions          = true      -- true/false. If true, each artillery in the coalition will fire automatically at available targets provided by other ground units and drones
+local reactions             = true      -- true/false. If true, when a mover group gets an hit, it will react accordingly to its skills and to its situational awareness, not staying there taking hits without doing nothing
+local suppression           = true      -- true/false. If true, once a group take fire from arty or air and it's not armoured, it will be suppressed for 15-45 seconds and won't return fire. Require reactions to be set as 'true'
+local dismount 		        = true 		-- true/false. //BEWARE: CAN AFFECT PERFORMANCES ON LOW END SYSTEMS // Thanks to MBot's original script, if true AI ground units with infantry transport capabilities (mainly APC/IFV/Trucks) will dismount soldiers with rifle, rpg and sometimes mandpads when appropriate
 
 
 -- User advanced customization
-AIEN_xcl_tag		= "XCL" 	-- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed. Any ground group with this 'tag' in its group name won't get AI enhancement behaviour, regardless of its coalition 
-local message_feed  = true 		-- true/false. If true, each relevant AI action starting will also create a trigger message feedback for its coalition
-
+AIEN_xcl_tag		        = "XCL" 	-- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed. Any ground group with this 'tag' in its group name won't get AI enhancement behaviour, regardless of its coalition 
+local message_feed          = true 		-- true/false. If true, each relevant AI action starting will also create a trigger message feedback for its coalition
+local mark_on_f10_map       = true 	    -- true/false. If true, each relevant AI action starting will also mark it on the F10 map
+local skill_action_const    = false     -- true/false. If true, AI available reactions types will be limited by the group average skill. If not, almost 2/3 of all available actions will be always be available regardless of the group skills
 
 -- User bug report: prior to report a bug, please try reproducing it with this variable set to "true"
 local AIEN_debugProcessDetail = true 
@@ -100,7 +101,9 @@ local proxyBuildingDistance				= 4000              -- m, if buildings are whitin
 local proxyUnitsDistance                = 5000              -- m, if units are whitin this distance value, they are considered "close"
 local supportDistance					= 8000				-- m, maximum distance for evaluating support or cover movements when under attack
 local withrawDist                       = 15000             -- m, maximum distance for withdraw manouver nearby a friendly support unit
-    
+
+-- Mark id addition
+local markIdStart                       = 12345000000
 
 --####################################################################################################
 --###### DO NOT CHANGE CODE BELOW HERE ###############################################################
@@ -123,8 +126,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0130"
-local Date								= "2024.11.05"
+local Build 							= "0135"
+local Date								= "2024.11.25"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -275,13 +278,13 @@ local dismountTeamsWest = {
         [3] = "Soldier M4",
         [4] = "Soldier M249",
     }},-- mixed is actually 3 rifle and 1 rpg      
-    ["RPGs"] = {id = "RPGs", p = 7, c = {
+    ["RPGs"] = {id = "RPGs", p = 9, c = {
         [1] = "Paratrooper RPG-16",
         [2] = "Paratrooper RPG-16",
         [3] = "Soldier M4",
         [4] = "Soldier M4",
     }},              
-    ["manpads"] = {id = "manpads", p = 1, c = {
+    ["manpads"] = {id = "manpads", p = 3, c = {
         [1] = "Stinger manpad",
         [2] = "Stinger manpad",
         [3] = "Soldier M4",
@@ -301,18 +304,40 @@ local dismountTeamsEast = {
         [3] = "Infantry AK ver3",
         [4] = "Infantry AK ver3",
     }},-- mixed is actually 3 rifle and 1 rpg      
-    ["RPGs"] = {id = "RPGs", p = 7, c = {
+    ["RPGs"] = {id = "RPGs", p = 9, c = {
         [1] = "Paratrooper RPG-16",
         [2] = "Paratrooper RPG-16",
         [3] = "Infantry AK ver2",
         [4] = "Infantry AK ver3",
     }},               
-    ["manpads"] = {id = "manpads", p = 1, c = {
+    ["manpads"] = {id = "manpads", p = 3, c = {
         [1] = "SA-18 Igla manpad",
         [2] = "SA-18 Igla manpad",
         [3] = "Infantry AK ver3",
     }},  
 }
+
+if env.mission and env.mission.date and env.mission.date.Year then
+    local y = tonumber(env.mission.date.Year)
+
+    if AIEN_debugProcessDetail == true then
+        env.info(("AIEN mission date: " .. tostring(y)))
+    end
+
+    if y < 1980 then
+        dismountTeamsWest["manpads"] = nil
+        if AIEN_debugProcessDetail == true then
+            env.info(("AIEN removed stinger"))
+        end
+    elseif y < 1970 then
+        dismountTeamsEast["manpads"] = nil
+        dismountTeamsWest["manpads"] = nil
+        if AIEN_debugProcessDetail == true then
+            env.info(("AIEN removed all manpads"))
+        end
+    end
+end
+
 
 
 --## LINKED TABLES (or local if not available)
@@ -5473,168 +5498,178 @@ end
 
 
 --## AWARENESS CONSTRUCTION FOR FSM USE -- the core of the reaction decision making behaviour: this functions use the upper ones to try to built a virtual situational awareness, and also collect for faster access some key informations.
+
 local function getSA(group) -- built a situational awareness check
     
 	if group and group:isExist() == true then
-		local sa = {}
+        local dbEntry = groundgroupsDb[group:getID()] or droneunitDb[group:getID()]
 
-		-- derivable functions
-		sa.enInContact, sa.targets 	= hasTargets(group)
-		sa.loss 		            = groupHasLosses(group)
-		sa.dmg, sa.life, sa.str     = groupStatus(group) -- str must be added
-		sa.low_ammo 	            = groupLowAmmo(group)
-		sa.pos			            = getLeadPos(group)
-        sa.coa                      = group:getCoalition()
-        sa.det                      = groundgroupsDb[group:getID()]["detection"]
-        sa.rng                      = groundgroupsDb[group:getID()]["threat"]
-        sa.cls                      = groundgroupsDb[group:getID()]["class"]
-        sa.nearAlly                 = nil -- table {n = amount, p = nearest position, s = strength as life count}
-        sa.nearEnemy                = nil -- table {n = amount, p = nearest position, s = strength as life count}
+        if dbEntry then
 
-        if sa.pos and sa.coa then
+            local sa = {}
 
-            -- fix potential det and range issue
-            if not sa.rng then
-                if sa.cls == "ARTY" then
-                    sa.rng = 15000
-                elseif sa.cls == "MLRS" then
-                    sa.rng = 30000
-                elseif sa.cls == "ATGM" then
-                    sa.rng = 4000
-                elseif sa.cls == "UAV" then
-                    sa.rng = 8000                
-                else
-                    sa.rng = 2000
+            -- derivable functions
+            sa.enInContact, sa.targets 	= hasTargets(group)
+            sa.loss 		            = groupHasLosses(group)
+            sa.dmg, sa.life, sa.str     = groupStatus(group) -- str must be added
+            sa.low_ammo 	            = groupLowAmmo(group)
+            sa.pos			            = getLeadPos(group)
+            sa.coa                      = group:getCoalition()
+            sa.det                      = dbEntry["detection"]
+            sa.rng                      = dbEntry["threat"]
+            sa.cls                      = dbEntry["class"]
+            sa.nearAlly                 = nil -- table {n = amount, p = nearest position, s = strength as life count}
+            sa.nearEnemy                = nil -- table {n = amount, p = nearest position, s = strength as life count}
+
+            if sa.pos and sa.coa then
+
+                -- fix potential det and range issue
+                if not sa.rng then
+                    if sa.cls == "ARTY" then
+                        sa.rng = 15000
+                    elseif sa.cls == "MLRS" then
+                        sa.rng = 30000
+                    elseif sa.cls == "ATGM" then
+                        sa.rng = 4000
+                    elseif sa.cls == "UAV" then
+                        sa.rng = 8000                
+                    else
+                        sa.rng = 2000
+                    end
                 end
-            end
-            if not sa.det then
-                if sa.cls == "ARTY" then
-                    sa.det = 2000
-                elseif sa.cls == "MLRS" then
-                    sa.det = 2000
-                elseif sa.cls == "ATGM" then
-                    sa.det = 4000
-                elseif sa.cls == "UAV" then
-                    sa.rng = 40000                
-                else
-                    sa.det = 2000
-                end
-            end 
-        
-            -- nearby allies (within proxyUnitsDistance)
-            local an = 0
-            local as = 0
-            local near_a = nil
-            local _volume = {
-                id = world.VolumeType.SPHERE,
-                params = {
-                    point = sa.pos,
-                    radius = proxyUnitsDistance,
-                },
-            }
-            local _search = function(_obj)
-                pcall(function()
-                    if _obj ~= nil and _obj:isExist() then
-                        local o_coa = _obj:getCoalition()
-                        local o_pos = _obj:getPosition().p
-                        local o_str = _obj:getLife()
-                        if o_coa and o_pos and o_str then
-                            if o_coa ~= 0 then -- skip neutral
-                                if o_coa == sa.coa then -- ally
-                                    local md = proxyUnitsDistance
-                                    local d = getDist(sa.pos, o_pos)
-                                    an = an + 1
-                                    as = as + o_str
-                                    if d < md then
-                                        md = d
-                                        near_a = o_pos
+                if not sa.det then
+                    if sa.cls == "ARTY" then
+                        sa.det = 2000
+                    elseif sa.cls == "MLRS" then
+                        sa.det = 2000
+                    elseif sa.cls == "ATGM" then
+                        sa.det = 4000
+                    elseif sa.cls == "UAV" then
+                        sa.rng = 40000                
+                    else
+                        sa.det = 2000
+                    end
+                end 
+            
+                -- nearby allies (within proxyUnitsDistance)
+                local an = 0
+                local as = 0
+                local near_a = nil
+                local _volume = {
+                    id = world.VolumeType.SPHERE,
+                    params = {
+                        point = sa.pos,
+                        radius = proxyUnitsDistance,
+                    },
+                }
+                local _search = function(_obj)
+                    pcall(function()
+                        if _obj ~= nil and _obj:isExist() then
+                            local o_coa = _obj:getCoalition()
+                            local o_pos = _obj:getPosition().p
+                            local o_str = _obj:getLife()
+                            if o_coa and o_pos and o_str then
+                                if o_coa ~= 0 then -- skip neutral
+                                    if o_coa == sa.coa then -- ally
+                                        local md = proxyUnitsDistance
+                                        local d = getDist(sa.pos, o_pos)
+                                        an = an + 1
+                                        as = as + o_str
+                                        if d < md then
+                                            md = d
+                                            near_a = o_pos
+                                        end
                                     end
                                 end
                             end
                         end
-                    end
-                end)
-            end
-            world.searchObjects(Object.Category.UNIT, _volume, _search)	
-            if an and near_a and as then
-                sa.nearAlly = {n = an, p = near_a, s = as}
-            end
-
-            -- update intelDb
-            if sa.targets and sa.targets ~= {} then
-                for _, tgtData in pairs(sa.targets) do
-                    local tgt = tgtData.object
-                    if Object.getCategory(tgt) == 1 then
-                        if tgt and tgt:isExist() then
-                            local t_id = tgt:getID()
-                            local t_pos = tgt:getPosition().p
-                            local t_coa = tgt:getCoalition()
-                            local t_life = tgt:getLife()
-                            local t = math.floor(timer.getTime())
-                            local s = vecmag(tgt:getVelocity())
-
-                            local knownType = tgt.type
-                            local t_type = nil
-                            if knownType == true then
-                                t_type = tgt:getTypeName()
-                            else
-                                t_type = "unknown"
-                            end
-
-                            local ob_cat = Object.getCategory(tgt)
-                            local t_ucat = nil
-                            local t_scat = nil
-                            if ob_cat and ob_cat == 1 then
-                                t_ucat = tgt:getCategory()
-                            elseif ob_cat and ob_cat == 3 then
-                                t_scat = tgt:getCategory()
-                            end
-
-                            local ob_desc = tgt:getDesc()
-                            local t_attr = nil
-                            if ob_desc and ob_desc.attributes then
-                                t_attr = ob_desc.attributes
-                            end
-
-                            local t_cls = getUnitClass(tgt)
-                            intelDb[t_id] = {obj = tgt, pos = t_pos, coa = t_coa, life = t_life, record = t, speed = s, type = t_type, ucat = t_ucat, scat = t_scat, attr = t_attr, cls = t_cls, identifier = sa.cls}
-                        
-                        end
-                    end
-                end           
-            end        
-
-            -- nearby enemies (use combined intel source DBs) + update intelDb
-            local near_e = nil
-            local es = 0
-            local en = 0
-            local dist = nil
-            for iId, iData in pairs(intelDb) do
-                if iData.obj:isExist() then
-                    if iData.coa ~= sa.coa and iData.coa ~= 0 and (timer.getTime() - iData.record) < intelDbTimeout then
-                        local d = getDist(sa.pos, iData.pos)
-                        if d < proxyUnitsDistance then
-                            en = en + 1
-                            es = es + iData.life
-                            if d < proxyUnitsDistance then
-                                near_e = iData.pos
-                                dist = d
-                            end
-                        end                
-                    end
-                else
-                    intelDb[iId] = nil -- removing the non existing object anymore. Do this any available cycle of intelDb
+                    end)
                 end
-            end
-            if en and near_e and es then
-                sa.nearEnemy = {n = en, p = near_e, s = es, d = dist}
-            end
+                world.searchObjects(Object.Category.UNIT, _volume, _search)	
+                if an and near_a and as then
+                    sa.nearAlly = {n = an, p = near_a, s = as}
+                end
 
-            return sa
+                -- update intelDb
+                if sa.targets and sa.targets ~= {} then
+                    for _, tgtData in pairs(sa.targets) do
+                        local tgt = tgtData.object
+                        if Object.getCategory(tgt) == 1 then
+                            if tgt and tgt:isExist() then
+                                local t_id = tgt:getID()
+                                local t_pos = tgt:getPosition().p
+                                local t_coa = tgt:getCoalition()
+                                local t_life = tgt:getLife()
+                                local t = math.floor(timer.getTime())
+                                local s = vecmag(tgt:getVelocity())
+
+                                local knownType = tgt.type
+                                local t_type = nil
+                                if knownType == true then
+                                    t_type = tgt:getTypeName()
+                                else
+                                    t_type = "unknown"
+                                end
+
+                                local ob_cat = Object.getCategory(tgt)
+                                local t_ucat = nil
+                                local t_scat = nil
+                                if ob_cat and ob_cat == 1 then
+                                    t_ucat = tgt:getCategory()
+                                elseif ob_cat and ob_cat == 3 then
+                                    t_scat = tgt:getCategory()
+                                end
+
+                                local ob_desc = tgt:getDesc()
+                                local t_attr = nil
+                                if ob_desc and ob_desc.attributes then
+                                    t_attr = ob_desc.attributes
+                                end
+
+                                local t_cls = getUnitClass(tgt)
+                                intelDb[t_id] = {obj = tgt, pos = t_pos, coa = t_coa, life = t_life, record = t, speed = s, type = t_type, ucat = t_ucat, scat = t_scat, attr = t_attr, cls = t_cls, identifier = sa.cls}
+                            
+                            end
+                        end
+                    end           
+                end        
+
+                -- nearby enemies (use combined intel source DBs) + update intelDb
+                local near_e = nil
+                local es = 0
+                local en = 0
+                local dist = nil
+                for iId, iData in pairs(intelDb) do
+                    if iData.obj:isExist() then
+                        if iData.coa ~= sa.coa and iData.coa ~= 0 and (timer.getTime() - iData.record) < intelDbTimeout then
+                            local d = getDist(sa.pos, iData.pos)
+                            if d < proxyUnitsDistance then
+                                en = en + 1
+                                es = es + iData.life
+                                if d < proxyUnitsDistance then
+                                    near_e = iData.pos
+                                    dist = d
+                                end
+                            end                
+                        end
+                    else
+                        intelDb[iId] = nil -- removing the non existing object anymore. Do this any available cycle of intelDb
+                    end
+                end
+                if en and near_e and es then
+                    sa.nearEnemy = {n = en, p = near_e, s = es, d = dist}
+                end
+
+                return sa
+            else
+                return false
+            end
         else
+            if AIEN_debugProcessDetail then
+                env.info((tostring(ModuleName) .. ", group not in db"))
+            end
             return false
         end
-		
 	else
 		if AIEN_debugProcessDetail then
 			env.info((tostring(ModuleName) .. ", group doesn't exist"))
@@ -5817,6 +5852,28 @@ local function groupfireAtPoint(var)
 
                 end
             end
+
+            -- mark on map for coalition
+            if mark_on_f10_map == true then
+
+                local lat, lon = coord.LOtoLL(vec3)
+                local MGRS = coord.LLtoMGRS(coord.LOtoLL(vec3))
+                if lat and lon then
+
+                    local LL_string = tostringLL(lat, lon, 0, true)
+                    local MGRS_string = tostringMGRS(MGRS ,4)
+                    local txt = ""
+                    txt = txt .. tostring(group:getName())
+                    txt = txt .. "\n" .. "Fire mission, coordinates:"
+                    txt = txt .. "\n" .. tostring(MGRS_string) .. "\n" .. tostring(LL_string)
+
+                    markIdStart = markIdStart + 1
+                    trigger.action.markToCoalition(markIdStart, txt, vec3, group:getCoalition(), false, false)
+
+                end
+            end
+
+
         else
             env.info((tostring(ModuleName) .. ", groupfireAtPoint, missing controller or for: " .. tostring(group:getName())))
         end	
@@ -8431,7 +8488,7 @@ local function populate_Db() -- this one is launched once at mission start and c
 	-- only ground groups
 	groundgroupsDb = {}
 	for i = 0, 2 do
-		for _, gp in pairs(coalition.getGroups(i), 2) do -- ground only
+		for _, gp in pairs(coalition.getGroups(i,2)) do -- ground only
 			if gp:isExist() then
 
                 local c = getGroupClass(gp)
@@ -8529,7 +8586,7 @@ local function populate_Db() -- this one is launched once at mission start and c
 	-- only drone units
 	droneunitDb = {}	
 	for i = 0, 2 do
-		for _, gp in pairs(coalition.getGroups(i), 0) do -- airplane only
+		for _, gp in pairs(coalition.getGroups(i,0)) do -- airplane only
 			if gp:isExist() then
                 local c = nil
                 if gp:getUnits() then
@@ -9258,8 +9315,13 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                             end
                         
                             -- filter available actions by skill
+                            local filter = db_group.skill
+                            if skill_action_const == false then
+                                filter = filter * 2
+                            end
+
                             for aSk, action in pairs(av_ac) do
-                                if aSk > db_group.skill then
+                                if aSk > filter then
                                     av_ac[aSk] = nil
                                 end
                             end
