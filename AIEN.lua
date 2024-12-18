@@ -126,7 +126,7 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0139"
+local Build 							= "0140"
 local Date								= "2024.12.18"
 
 --## NOT USED (YET) / TO BE REMOVED
@@ -7262,6 +7262,7 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
         local pN3 = ownPos
         local pN4 = ownPos
         local pos1, pos2, pos3, pos4
+        local gCoa = group:getCoalition()
 
         if pN1 and pN2 and pN3 and pN4 then
             pos1 = {x = pN1.x, y = pN1.y, z = pN1.z + proxyBuildingDistance}
@@ -7279,7 +7280,9 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                 }
                 local count = 0
                 local tblPos = {}
-                local _search = function(_obj)
+                local enemies = false
+                
+                local _searchB = function(_obj)
                     pcall(function()
                         if _obj ~= nil then
                             local o_desc = _obj:getDesc()
@@ -7292,8 +7295,24 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                         end
                     end)
                 end
-                world.searchObjects(Object.Category.SCENERY, _volume, _search)	
-                if count > 3 and #tblPos > 3 then
+
+                local _searchU = function(_obj)
+                    pcall(function()
+                        if _obj ~= nil then
+                            local o_coa = _obj:getCoalition()
+                            if o_coa  then
+                                if o_coa ~= gCoa then
+                                    enemies = true
+                                end
+                            end              
+                        end
+                    end)
+                end                
+
+                world.searchObjects(Object.Category.SCENERY, _volume, _searchB)	
+                world.searchObjects(Object.Category.UNIT,    _volume, _searchU)
+
+                if count > 3 and #tblPos > 3 and not enemies then
                     local bestPos = avgVec3(tblPos)
                     return count, bestPos
                 end
