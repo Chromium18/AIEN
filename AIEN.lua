@@ -126,7 +126,7 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0137"
+local Build 							= "0139"
 local Date								= "2024.12.18"
 
 --## NOT USED (YET) / TO BE REMOVED
@@ -9241,11 +9241,18 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 end      
 
                                 -- position and speed
+                                --[[ removed cause of issues with isTargetDetected function returned variables
                                 if a_pos and s_lastVel and s_lastTime then
                                     if timer.getTime() - s_lastTime < 30 and s_lastVel < 1 then
                                         s_fireMis = 1
                                     end
                                 end
+                                --]]--
+                                local rnd = math.random(1,100)
+                                if rnd > 70 then
+                                    s_fireMis = 1
+                                end
+
 
                             else -- try to address things when the shooter is unknown, based on weapon and effects
                                 if AIEN_debugProcessDetail == true then
