@@ -126,8 +126,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0140"
-local Date								= "2024.12.18"
+local Build 							= "0141"
+local Date								= "2024.12.20"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -4824,12 +4824,12 @@ end
 
 local function getReactionTime(avg_skill)
     if avg_skill then -- 
-        local multiplier = 10/(avg_skill/10)
+        local multiplier = 10/(avg_skill/10)/4
         local min = math.floor(rndMinRT_xper*multiplier)
         local max = math.floor(rndMacRT_xper*multiplier)
         return aie_random(min, max)
     else
-        return aie_random(5, 20)
+        return aie_random(3, 15)
     end
 end
 
@@ -5824,7 +5824,7 @@ local function groupfireAtPoint(var)
 
             gController:pushTask(_task)
             if AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", groupfireAtPoint will allow dispersal"))
+                env.info((tostring(ModuleName) .. ", groupfireAtPoint fire mission planned"))
             end
             
             -- message feedback
@@ -7183,7 +7183,7 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
     if AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_attack launched, move randomly"))
+        env.info((tostring(ModuleName) .. ", ac_attack launched, move toward enemy"))
     end    
     
     if group and tgtPos then
@@ -7300,8 +7300,14 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                     pcall(function()
                         if _obj ~= nil then
                             local o_coa = _obj:getCoalition()
+                            if AIEN_debugProcessDetail then
+                                env.info((tostring(ModuleName) .. ", ac_coverBuildings o_coa: " .. tostring(o_coa)))
+                            end    
                             if o_coa  then
                                 if o_coa ~= gCoa then
+                                    if AIEN_debugProcessDetail then
+                                        env.info((tostring(ModuleName) .. ", ac_coverBuildings enemies true! " .. tostring(enemies)))
+                                    end   
                                     enemies = true
                                 end
                             end              
@@ -7309,19 +7315,41 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                     end)
                 end                
 
+                if AIEN_debugProcessDetail then
+                    env.info((tostring(ModuleName) .. ", ac_coverBuildings enemies: " .. tostring(enemies)))
+                end    
+
                 world.searchObjects(Object.Category.SCENERY, _volume, _searchB)	
                 world.searchObjects(Object.Category.UNIT,    _volume, _searchU)
 
-                if count > 3 and #tblPos > 3 and not enemies then
+                if count > 3 and #tblPos > 3 and enemies == false then
+                    if AIEN_debugProcessDetail then
+                        env.info((tostring(ModuleName) .. ", ac_coverBuildings adding point, count: " .. tostring(count)))
+                    end  
                     local bestPos = avgVec3(tblPos)
                     return count, bestPos
                 end
             end
 
+            if AIEN_debugProcessDetail then
+                env.info((tostring(ModuleName) .. ", ac_coverBuildings starting c1p1"))
+            end 
             local c1, p1 = countBld(pos1)
+            if AIEN_debugProcessDetail then
+                env.info((tostring(ModuleName) .. ", ac_coverBuildings starting c2p2"))
+            end
             local c2, p2 = countBld(pos2)
+            if AIEN_debugProcessDetail then
+                env.info((tostring(ModuleName) .. ", ac_coverBuildings starting c3p3"))
+            end
             local c3, p3 = countBld(pos3)
+            if AIEN_debugProcessDetail then
+                env.info((tostring(ModuleName) .. ", ac_coverBuildings starting c4p4"))
+            end
             local c4, p4 = countBld(pos4)
+            if AIEN_debugProcessDetail then
+                env.info((tostring(ModuleName) .. ", ac_coverBuildings done all P's"))
+            end
 
             if p1 or p2 or p3 or p4 then -- at least one should exist
                 local function trovaPuntoPiuVicino(p0, ...)
@@ -7560,7 +7588,7 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
     if AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter launched, move randomly"))
+        env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter launched, planning"))
     end    
     
     if tgtPos then
@@ -7578,6 +7606,7 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
                             if AIEN_debugProcessDetail == true then
                                 env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return true, planning the fire mission"))
                             end
+
                             return true
                        end
                     end
@@ -8341,6 +8370,8 @@ local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
                     if aData.name == dbActData.name then
                         local f = dbActData.ac_function
                         if f then
+
+                            trigger.action.groupContinueMoving(gr)
                             local success = f(gr, ownPos, tgtPos, dbActData.resume, saTbl, skill)
                             if AIEN_debugProcessDetail == true then
                                 env.info(("AIEN.executeActions, action success = " .. tostring(success)))
@@ -8756,6 +8787,7 @@ local function update_GROUND()
 end
 
 -- ISR update, PHASE "B"
+
 local function update_ISR() -- basically clean old ISR data
     if PHASE == "B" then -- confirm correct PHASE of performPhaseCycle
         if intelDb and next(intelDb) ~= nil then -- check that table exist and that it's not void
@@ -9138,6 +9170,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                 end  
 
                 if AI_consent == true then -- check
+
+                    trigger.action.groupStopMoving(group)
 
                     -- suppression part
                     if shooter and shooter:isExist() and shooter:getCategory() == 1 and armoured and suppression == true then
