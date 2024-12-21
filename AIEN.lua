@@ -126,8 +126,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0141"
-local Date								= "2024.12.20"
+local Build 							= "0142"
+local Date								= "2024.12.21"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -324,16 +324,16 @@ if env.mission and env.mission.date and env.mission.date.Year then
         env.info(("AIEN mission date: " .. tostring(y)))
     end
 
-    if y < 1980 then
-        dismountTeamsWest["manpads"] = nil
-        if AIEN_debugProcessDetail == true then
-            env.info(("AIEN removed stinger"))
-        end
-    elseif y < 1970 then
+    if y < 1970 then
         dismountTeamsEast["manpads"] = nil
         dismountTeamsWest["manpads"] = nil
         if AIEN_debugProcessDetail == true then
             env.info(("AIEN removed all manpads"))
+        end
+    elseif y < 1980 then
+        dismountTeamsWest["manpads"] = nil
+        if AIEN_debugProcessDetail == true then
+            env.info(("AIEN removed stinger"))
         end
     end
 end
