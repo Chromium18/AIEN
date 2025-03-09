@@ -54,13 +54,13 @@ local reactions             = true      -- true/false. If true, when a mover gro
 local suppression           = true      -- true/false. If true, once a group take fire from arty or air and it's not armoured, it will be suppressed for 15-45 seconds and won't return fire. Require reactions to be set as 'true'
 local dismount 		        = true 		-- true/false. //BEWARE: CAN AFFECT PERFORMANCES ON LOW END SYSTEMS // Thanks to MBot's original script, if true AI ground units with infantry transport capabilities (mainly APC/IFV/Trucks) will dismount soldiers with rifle, rpg and sometimes mandpads when appropriate
 
-
 -- User advanced customization
 AIEN_xcl_tag		        = "XCL" 	-- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed. Any ground group with this 'tag' in its group name won't get AI enhancement behaviour, regardless of its coalition 
+AIEN_zoneFilter             = "AIEN"    -- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed, i.e. "AIEN" will fit. If left nil, or void string like "", won't be used. When a valid non-void string is present, AIEN will allow reactions, suppression and dismount to work only if the group leader unit is inside a zone with the exact string name    
 local message_feed          = true 		-- true/false. If true, each relevant AI action starting will also create a trigger message feedback for its coalition
 local mark_on_f10_map       = true 	    -- true/false. If true, each relevant AI action starting will also mark it on the F10 map
 local skill_action_const    = false     -- true/false. If true, AI available reactions types will be limited by the group average skill. If not, almost 2/3 of all available actions will be always be available regardless of the group skills
-
+ 
 -- User bug report: prior to report a bug, please try reproducing it with this variable set to "true"
 local AIEN_debugProcessDetail = true 
 
@@ -126,8 +126,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0142"
-local Date								= "2024.12.21"
+local Build 							= "0141"
+local Date								= "2024.12.20"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -324,16 +324,16 @@ if env.mission and env.mission.date and env.mission.date.Year then
         env.info(("AIEN mission date: " .. tostring(y)))
     end
 
-    if y < 1970 then
+    if y < 1980 then
+        dismountTeamsWest["manpads"] = nil
+        if AIEN_debugProcessDetail == true then
+            env.info(("AIEN removed stinger"))
+        end
+    elseif y < 1970 then
         dismountTeamsEast["manpads"] = nil
         dismountTeamsWest["manpads"] = nil
         if AIEN_debugProcessDetail == true then
             env.info(("AIEN removed all manpads"))
-        end
-    elseif y < 1980 then
-        dismountTeamsWest["manpads"] = nil
-        if AIEN_debugProcessDetail == true then
-            env.info(("AIEN removed stinger"))
         end
     end
 end
@@ -4105,7 +4105,6 @@ local function getGroupSpeed(group)
     end
 end
 
-
 local function toDegree(angle)
 	return angle*180/math.pi
 end
@@ -4221,6 +4220,32 @@ local function zoneToVec3(zone)
 			return new
 		end
 	end
+end
+
+local function pointInPolygon(point, poly) -- mist local copy ot f that function
+
+	point = makeVec3(point)
+	local px = point.x
+	local pz = point.z
+	local cn = 0
+	local newpoly = deepCopy(poly)
+
+    local polysize = #newpoly
+    newpoly[#newpoly + 1] = newpoly[1]
+
+    newpoly[1] = makeVec3(newpoly[1])
+
+    for k = 1, polysize do
+        newpoly[k+1] = makeVec3(newpoly[k+1])
+        if ((newpoly[k].z <= pz) and (newpoly[k+1].z > pz)) or ((newpoly[k].z > pz) and (newpoly[k+1].z <= pz)) then
+            local vt = (pz - newpoly[k].z) / (newpoly[k+1].z - newpoly[k].z)
+            if (px < newpoly[k].x + vt*(newpoly[k+1].x - newpoly[k].x)) then
+                cn = cn + 1
+            end
+        end
+    end
+
+    return cn%2 == 1
 end
 
 local function getPayload(unitName)
@@ -4841,6 +4866,7 @@ local function groupAllowedForAI(group)
     end
     return true
 end
+
 
 --###### CURRENT MISSION CONDITIONS ################################################################
 
@@ -5478,7 +5504,7 @@ local function getDangerClose(vec3, coa, range)
 
             local _search = function(_obj)
                 pcall(function()
-                    if _obj ~= nil and _obj:isExist() and _obj:getCoalition() == coa then
+                    if _obj ~= nil and _obj:isExist() and Object.getCategory(_obj) == 1 and _obj:getCoalition() == coa then
                         friendly = true
                         if AIEN_debugProcessDetail == true then
                             env.info((tostring(ModuleName) .. ", getDangerClose: found friendly unit"))
@@ -5498,6 +5524,41 @@ local function getDangerClose(vec3, coa, range)
     end
 end
 
+local function groupInZone(group)
+    local point = getLeadPos(group)
+    local zone = nil
+    
+    if point then
+    
+        if env.mission and env.mission.triggers and env.mission.triggers.zones and #env.mission.triggers.zones > 0 then
+            for zId, zData in pairs(env.mission.triggers.zones) do
+                if zData.name == AIEN_zoneFilter then
+                    zone = zData
+                    zone.center = {x = zone.x, y = land.getHeight({x = zone.x, y = zone.y}), z = zone.y}
+                end
+            end
+        end
+
+        if not zone then
+            return true
+        else
+            if zone.verticies then
+                if pointInPolygon(point, zone.verticies) == true then
+                    return true
+                else
+                    return false
+                end
+            elseif zone.radius then
+                if getDist(point, zone.center) < zone.radius then
+                    return true
+                else
+                    return false
+                end
+            end
+
+        end
+    end
+end
 
 --## AWARENESS CONSTRUCTION FOR FSM USE -- the core of the reaction decision making behaviour: this functions use the upper ones to try to built a virtual situational awareness, and also collect for faster access some key informations.
 
@@ -5566,7 +5627,7 @@ local function getSA(group) -- built a situational awareness check
                 }
                 local _search = function(_obj)
                     pcall(function()
-                        if _obj ~= nil and _obj:isExist() then
+                        if _obj ~= nil and Object.getCategory(_obj) == 1 and _obj:isExist() then
                             local o_coa = _obj:getCoalition()
                             local o_pos = _obj:getPosition().p
                             local o_str = _obj:getLife()
@@ -6242,7 +6303,7 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                     local curPri = 0
                     local _search = function(_obj)
                         pcall(function()
-                            if _obj ~= nil and _obj:getCategory() == 1 and _obj:isExist() and _obj:getCoalition() == coa then
+                            if _obj ~= nil and Object.getCategory(_obj) == 1 and _obj:isExist() and _obj:getCoalition() == coa then
                                 if _obj:hasAttribute("SAM SR") or _obj:hasAttribute("SAM TR") or _obj:hasAttribute("EWR") then
                                     local d = getDist(_obj:getPoint(), hitPos)
                                     if d < closestRange then
@@ -8476,7 +8537,7 @@ function AIEN_testActions(groupName, actionName)
 
 			local _search = function(_obj)
 				pcall(function()
-					if _obj ~= nil and _obj:isExist() and _obj:getCategory() == 1 and _obj:getCoalition() ~= coa then
+					if _obj ~= nil and Object.getCategory(_obj) == 1 and _obj:isExist() and _obj:getCoalition() ~= coa then
 						local _objPos = _obj:getPoint()
 						if _objPos then
 							local d = getDist(_objPos, ownPos)
@@ -8972,7 +9033,7 @@ local function update_ARTY()
                                                     local curPri = 0
                                                     local _search = function(_obj)
                                                         pcall(function()
-                                                            if _obj ~= nil and _obj:isExist() and _obj:getCoalition() ~= gData.coa then
+                                                            if _obj ~= nil and Object.getCategory(_obj) == 1 and _obj:isExist() and _obj:getCoalition() ~= gData.coa then
                                                                 local _obj_id = _obj:getID()
                                                                 local report = intelDb[_obj_id]
                                                                 if report and report.speed < 1 and report.targeted == nil then
@@ -9162,6 +9223,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
             if group and group:isExist() and groupAllowedForAI(group) == true then -- filtering both for existance and for exclusion tag being not there
                 
                 local AI_consent = true
+
+                -- filter for coalition
                 if group:getCoalition() == 2 and blueAI == false then
                     AI_consent = false
                 end
@@ -9169,12 +9232,25 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                     AI_consent = false
                 end  
 
-                if AI_consent == true then -- check
+                if AIEN_debugProcessDetail == true then
+                    env.info(("AIEN.event_hit, S_EVENT_HIT, coalition check return AI_consent " .. tostring(AI_consent) ))
+                end	
+
+                if AI_consent == true then
+                    if AIEN_zoneFilter and AIEN_zoneFilter ~= "" then
+                        AI_consent = groupInZone(group)
+                        if AIEN_debugProcessDetail == true then
+                            env.info(("AIEN.event_hit, S_EVENT_HIT, group zone check return AI_consent " .. tostring(AI_consent) ))
+                        end	
+                    end
+                end
+                
+                if AI_consent == true then
 
                     trigger.action.groupStopMoving(group)
 
                     -- suppression part
-                    if shooter and shooter:isExist() and shooter:getCategory() == 1 and armoured and suppression == true then
+                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and armoured and suppression == true then
                         local suppressEffects = false
                         if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
                             suppressEffects = true
@@ -9188,7 +9264,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                     end
 
                     -- dismount part
-                    if shooter and shooter:isExist() and shooter:getCategory() == 1 and dismount == true then
+                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and dismount == true then
                         if not underAttack[group:getID()] then
                             if shooter:hasAttribute("Air") then
                                 timer.scheduleFunction(groupDeployManpad, group, timer.getTime() + aie_random(8, 15))
@@ -9247,7 +9323,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 end								
                             end
 
-                            if shooter and shooter:isExist() and con then
+                            if shooter and Object.getCategory(shooter) == 1 and shooter:isExist() and con then
                                 if AIEN_debugProcessDetail == true then
                                     env.info(("AIEN.event_hit, S_EVENT_HIT, shooter known"))
                                 end	
@@ -9434,7 +9510,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
 
                     -- counter battery part
                     if choosenAct ~= "ac_fireMissionOnShooter" then
-                        if shooter and shooter:getCategory() == 1 and shooter:isExist() and firemissions == true then
+                        if shooter and Object.getCategory(shooter) == 1 and shooter:isExist() and firemissions == true then
                             if shooter:getPoint() and position then
                                 counterBattery(position, shooter:getPoint(), group:getCoalition())
                             end
