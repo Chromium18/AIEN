@@ -1,7 +1,7 @@
 --[[ GROUND UNITS AI ENHANCEMENT -- AI-EN
 
-This script is possible thanks to the existance of many other scripts that I had the opportunity to use as inspiration, or partial copy, or modification due to being publicy available.
-I basically leart coding starting with mist, CTLD, SLmod, dismount script, and else. All credits goes to these authors, and I am very grateful. Therefore this script is obviously public
+This script is possible thanks to the existence of many other scripts that I had the opportunity to use as inspiration, or partial copy, or modification due to being publicly available.
+I basically learnt coding starting with mist, CTLD, SLmod, dismount script, and else. All credits goes to these authors, and I am very grateful. Therefore this script is obviously public
 and you should feel free to use it totally, partially or anything else for any DCS gaming purpose.
 
 What is it?
@@ -15,7 +15,7 @@ This works mostly by changing 2 common behaviours:
 - the fact the the units basically do not react to any hostile fire moving elsewhere: the script provide movement decision
 - the fact that artillery units fire only when they directly achieve a target, which is mostly unlikely: the script provide targets on arty groups via allied units informations
 
-It also act on another important thing on ground war: dismountable soldiers' teams. By reharsing an idea of MBot dismount script,
+It also act on another important thing on ground war: dismountable soldiers' teams. By rehearsing an idea of MBot dismount script,
 AIEN add soldier teams to any IFV, APC and trucks unit in the scenery. That means that a ground unit normally "unarmed" like a M-939 
 might in fact transport RPG, rifle and even manpads units that will dismount from it when necessary to respond to specific menace.
 
@@ -29,7 +29,7 @@ Usage informations:
 - It won't be properly compatible with any other script that try to change the AI behaviours for ground movers. It should be ok with IADS scripts;
 - It alter the ground groups behaviour and any change will effectively "broke" any other actions given by DCS or CA user when kicking in (and that's just normal and ok).
 - The script do not use any naming convention (except for the exclusion tag), it will define available AI behaviour change using DCS available parameters such as unit attributes, skills, etc.
-- you will be able to customize each of its "features", by enhabling and disabling each option you want to use, here below  
+- you will be able to customize each of its "features", by enabling and disabling each option you want to use, here below  
 
 Purpose and limitations:
 The script does not want to provide a complete "automated ground war" thing: this is already in development by both ED and also by DSMC script by me. 
@@ -56,9 +56,9 @@ local dismount 		        = true 		-- true/false. //BEWARE: CAN AFFECT PERFORMANC
 
 -- User advanced customization
 AIEN_xcl_tag		        = "XCL" 	-- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed. Any ground group with this 'tag' in its group name won't get AI enhancement behaviour, regardless of its coalition 
-AIEN_zoneFilter             = "AIEN"    -- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed, i.e. "AIEN" will fit. If left nil, or void string like "", won't be used. When a valid non-void string is present, AIEN will allow reactions, suppression and dismount to work only if the group leader unit is inside a zone with the exact string name    
+AIEN_zoneFilter             = ""    	-- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed, i.e. "AIEN" will fit. If left nil, or void string like "", won't be used. Only groups inside the named trigger zone will be affected by AIEN script behaviors of reaction, dismount and suppression, and vice versa. If no trigger zone with the specific name is in the mission, then all the groups will use AIEN features.
 local message_feed          = true 		-- true/false. If true, each relevant AI action starting will also create a trigger message feedback for its coalition
-local mark_on_f10_map       = true 	    -- true/false. If true, each relevant AI action starting will also mark it on the F10 map
+local mark_on_f10_map       = true 	    -- true/false. If true, when an artillery fire mission is ongoing, a markpoint will appear on the map of the allied coalition to show the expected impact point
 local skill_action_const    = false     -- true/false. If true, AI available reactions types will be limited by the group average skill. If not, almost 2/3 of all available actions will be always be available regardless of the group skills
  
 -- User bug report: prior to report a bug, please try reproducing it with this variable set to "true"
@@ -78,7 +78,7 @@ local repositionDistance				= 500		        -- meters, radius to a specific desti
 local rndFleeDistance		            = 2000 		        -- meters, reposition distance given to a group when a destination is not defined. The direction also will be totally random. Used, i.e., for "panic" reaction
 
 -- dismounted troops variables
-local droppedReposition                 = 80                -- if no enemy is identified, this is the distance where dismount group will reposition themselfs
+local droppedReposition                 = 80                -- if no enemy is identified, this is the distance where dismount group will reposition themselves
 local remountTime                       = 600               -- time after which dismounted troops will try to go back to their original vehicle for remount, if commanded
 local infantryExtractDist               = 200               -- max distance from vehicle to troops to allow a group extraction
 local infantrySearchDist                = 2000              -- max distance from vehicle to troops to allow a dismount group to run toward the enemies
@@ -88,7 +88,7 @@ local outAmmoLowLevel                   = 0.5		        -- factor on total amount
 
 -- reactions and tasking variables
 local intelDbTimeout                    = 1200              -- seconds. Used to cancel intelDb entries for units (not static!), when the time of the contact gathering is more than this value
-local artyFireLastContactThereshold     = 300               -- seconds, max amount of time since last contac to consider an arty target ok
+local artyFireLastContactThereshold     = 300               -- seconds, max amount of time since last contact to consider an arty target ok
 local taskTimeout                       = 480               -- seconds after which a tasked group is removed from the database
 local targetedTimeout                   = 240               -- seconds after which a targeted variable in inteldb is removed from database
 local disperseActionTime				= 120		        -- seconds
@@ -97,13 +97,12 @@ local counterBatteryPlanDelay           = 240               -- s, will be also r
 local smoke_source_num                  = 5                 -- number, between 4 and 9. Generated smokes for each unit when smoke reaction is called in. Any number below 4 or above 9 will be converted in the nearest threshold
 
 -- SA evaluation variables
-local proxyBuildingDistance				= 4000              -- m, if buildings are whitin this distance value, they are considered "close"
-local proxyUnitsDistance                = 5000              -- m, if units are whitin this distance value, they are considered "close"
+local proxyBuildingDistance				= 4000              -- m, if buildings are within this distance value, they are considered "close"
+local proxyUnitsDistance                = 5000              -- m, if units are within this distance value, they are considered "close"
 local supportDistance					= 8000				-- m, maximum distance for evaluating support or cover movements when under attack
-local withrawDist                       = 15000             -- m, maximum distance for withdraw manouver nearby a friendly support unit
+local withrawDist                       = 15000             -- m, maximum distance for withdraw manoeuvre nearby a friendly support unit
 
--- Mark id addition
-local markIdStart                       = 12345000000
+
 
 --####################################################################################################
 --###### DO NOT CHANGE CODE BELOW HERE ###############################################################
@@ -112,6 +111,9 @@ local markIdStart                       = 12345000000
 --###### CONFIG AND VARIABLES ########################################################################
 
 --## MAIN VARIABLES
+
+-- Mark id addition
+local markIdStart                       = 12345000000
 
 -- DSMC version of the script check: if already there due to DSMC version, the script won't be loaded.
 if AIEN then
@@ -126,8 +128,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0146"
-local Date								= "2025.03.09"
+local Build 							= "0147"
+local Date								= "2025.03.11"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
