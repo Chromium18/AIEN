@@ -343,15 +343,17 @@ end
 
 
 --## LINKED TABLES (or local if not available)
-
-
 local tblThreatsRange                   = nil  -- this is a foundamental table cause it holds the firing range of any units, but mostly artillery one! Since the required data aren't available in the mission env, it can be either ported by DSMC (if used) or manually prompted. For the latter, obviously, it require to be manually updated. 
 if EMBD then -- just for compatibility enhancement
     tblThreatsRange                = EMBD.tblThreatsRange
-    for tId, tData in pairs(tblThreatsRange) do
-        tData.attr = nil
+    if tblThreatsRange then
+        for tId, tData in pairs(tblThreatsRange) do
+            tData.attr = nil
+        end
     end
-else
+end
+
+if not tblThreatsRange then
 	tblThreatsRange = {
         ["S-60_Type59_Artillery"] = 
         {
