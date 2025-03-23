@@ -128,8 +128,8 @@ AIEN                                	= {}
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0147"
-local Date								= "2025.03.11"
+local Build 							= "0148"
+local Date								= "2025.03.23"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -350,6 +350,13 @@ if EMBD then -- just for compatibility enhancement
         for tId, tData in pairs(tblThreatsRange) do
             tData.attr = nil
         end
+    end
+end
+
+if DGWS then -- just for compatibility enhancement
+    tblThreatsRange                = DSMC_tblThreatsRange
+    for tId, tData in pairs(tblThreatsRange) do
+        tData.attr = nil
     end
 end
 
@@ -9254,7 +9261,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                     trigger.action.groupStopMoving(group)
 
                     -- suppression part
-                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and armoured and suppression == true then
+                    if suppression == true and shooter and shooter:getCategory() == 1 and shooter:isExist() and armoured then
                         local suppressEffects = false
                         if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
                             suppressEffects = true
@@ -9268,7 +9275,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                     end
 
                     -- dismount part
-                    if shooter and shooter:getCategory() == 1 and shooter:isExist() and dismount == true then
+                    if dismount == true and shooter and shooter:getCategory() == 1 and shooter:isExist() then
                         if not underAttack[group:getID()] then
                             if shooter:hasAttribute("Air") then
                                 timer.scheduleFunction(groupDeployManpad, group, timer.getTime() + aie_random(8, 15))
