@@ -44,6 +44,7 @@ Suggestion, ideas:
 
 --## USER CUSTOMIZATION VARIABLES ##
 AIEN.config = {}
+AIEN.config.dontInitialize      = false     -- if true, AIEN will not initialize; instead, you'll have to run it from your own code - it's useful when you want to override some functions/parameters before the initialization takes place
 
 -- coalition affected by the script
 AIEN.config.blueAI 		        = true 		-- true/false. If true, the AI enhancement will be applied to the blue coalition ground groups, else, no script effect will take place
@@ -9687,8 +9688,12 @@ world.addEventHandler(AIEN.eventHandler)
 
 
 --## INIT SCRIPT
-AIEN.performPhaseCycle()
+if AIEN.config.dontInitialize then
+	env.info((ModuleName .. ": Loaded (BUT NOT INITIALIZED) " .. MainVersion .. "." .. SubVersion .. "." .. Build .. ", released " .. Date))
+else
+	AIEN.performPhaseCycle()
+	env.info((ModuleName .. ": Loaded " .. MainVersion .. "." .. SubVersion .. "." .. Build .. ", released " .. Date))
+end
 
-env.info((ModuleName .. ": Loaded " .. MainVersion .. "." .. SubVersion .. "." .. Build .. ", released " .. Date))
 
 --~=
