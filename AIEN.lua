@@ -41,6 +41,8 @@ Suggestion, ideas:
 
 --]]--
 
+--## GLOBAL GENERAL AIEN CONTENT TABLE
+AIEN                                	= {}
 
 --## USER CUSTOMIZATION VARIABLES ##
 AIEN.config = {}
@@ -118,13 +120,10 @@ AIEN.config.withrawDist                       = 15000             -- m, maximum 
 local markIdStart                       = 12345000000
 
 -- DSMC version of the script check: if already there due to DSMC version, the script won't be loaded.
-if AIEN then
+if AIEN.performPhaseCycle then
     env.info(("AIEN already there in another way, stopping"))
     return
 end
-
---## GLOBAL GENERAL AIEN CONTENT TABLE
-AIEN                                	= {}
 
 --## LOCAL GENERAL INFORMATIONS VARIABLES (mostly used for debug log and info)
 local ModuleName  						= "AIEN"
