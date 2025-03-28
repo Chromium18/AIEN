@@ -4600,8 +4600,12 @@ local function pcallGetCategory(obj) -- done to avoid DCS errors
             return nil 
         end
     end
-    local res = pcall(effectiveCheck, obj)
-    return res
+    local noError, errorOrResult = pcall(effectiveCheck, obj)
+    if noError then
+        return errorOrResult
+    else
+        env.info(string.format("AIEN pcallGetCategory, error returned when calling the function: %s", errorOrResult or ""))
+    end
 end
 
 -- desanitized functions (if available), for logging, table printing and debug purposes
