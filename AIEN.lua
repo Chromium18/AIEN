@@ -154,7 +154,6 @@ local PHASE                             = "Initialization"  -- used by FSM, don'
 local phase_index                   	= nil
 local phase_keys                        = {}
 local phaseCycleTimer                   = 0.2               -- seconds, used by FSM. Define how much time pass between a loop entry calculation and another. You might want to reduce it further or if you feel DCS being "slow" you can raise up to 1.0 second. 
-local forceRoadUse                      = nil               -- this variable is automatically handled. It's used for every planned movement, being dependant by obstacle numbers and also by weather
 local rndMinRT_xper                     = 2                 -- seconds counted as minimum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
 local rndMacRT_xper                     = 4                 -- seconds counted as maximum basic reaction time after an event (beware, reaction time also depends on group averaged skill)
 local stupidIndex                       = 1                 -- used to avoid infinite loops
@@ -170,15 +169,6 @@ end
 if not DSMC_baseUcounter then
 	DSMC_baseUcounter = 19000000
 end
--- TODO the code below is not used; an error? -> Chromium: check this out
-local STTS_radioAM                      = DSMC_STTS_rAM
-local STTS_radioFM                      = DSMC_STTS_rFM
--- TODO the code below is not used; an error? -> Chromium: check this out
-local forceRoadUse = nil
-if env.mission.weather.clouds.iprecptns > 0 then
-    forceRoadUse = true
-end
-
 
 --## LOCAL DYNAMIC TABLES (DBs)
 
@@ -3600,7 +3590,7 @@ end
 -- all the below functions are basically elements used in other part of the code. Many of them are basically copy or modified copy of other useful code and script, 
 -- the credits list would be quite long but mostly mist, MOOSE, CTLD. When able I kept the original name even if slightly modified.
 
--- TODO the code below is not used; an error? -> Chromium: check this out
+-- revTODO the code below is not used; an error? -> Chromium: check this out -> nope will be used
 local function escape_string(str)
     local replacements = {
         ['%'] = '%%',
@@ -3854,83 +3844,6 @@ local function deepCopy(object)
     return _copy(object)
 end
 
--- TODO the code below is not used; an error? -> Chromium: check this out
-local function findGroupInRange(support_point, attribute, distance, coalition)
-    if support_point then
-        
-        local mindistance =   distance
-        local curGroup = nil
-        local volS = {
-        id = world.VolumeType.SPHERE,
-        params = {
-            point = support_point,
-            radius = distance
-            }
-        }
-        
-        local ifFound = function(foundItem, val)
-            local funcCheck = nil
-            if type(attribute) == "string" then
-                funcCheck = function(attribute)
-                    if foundItem:hasAttribute(attribute) then
-                        return true
-                    else
-                        return false
-                    end
-                end
-            elseif type(attribute) == "table" then
-                funcCheck = function(attribute)
-                    local hasVal = false
-                    for att, attVal in pairs(attribute) do
-                        if foundItem:hasAttribute(attVal) then
-                            hasVal = true
-                        end
-                    end
-
-                    if hasVal == true then
-                        return true
-                    else
-                        return false
-                    end
-
-                end
-            end
-
-            if funcCheck and funcCheck(attribute) == true then
-                
-                local proceed = true
-                if coalition then
-                    local coaCheck = foundItem:getCoalition()
-                    if coalition == coaCheck then
-                        proceed = true
-                    else
-                        proceed = false
-                    end
-                end
-                
-                if proceed == true then
-                    local itemPos = foundItem:getPosition().p
-                    if itemPos then
-                        local dist = getDist(itemPos, support_point)
-                        if dist < mindistance and dist > 1000 then
-                            mindistance = dist
-                            local foundGroup = foundItem:getGroup()
-                            curGroup = foundGroup
-                        end
-                    end
-                end
-            end       
-        end
-        world.searchObjects(Object.Category.UNIT, volS, ifFound)
-
-        if curGroup and mindistance then
-            return curGroup
-        else
-            return false
-        end
-    end
-end
-
 local function multyTypeMessage(var)
     local mexType       = var[1]
     local mexText       = var[2]
@@ -3973,15 +3886,6 @@ local function vecmag(vec)
 	return (vec.x^2 + vec.y^2 + vec.z^2)^0.5
 end
 
--- TODO the code below is not used; an error? -> Chromium: check this out
-local function vecsub(vec1, vec2)
-	return {x = vec1.x - vec2.x, y = vec1.y - vec2.y, z = vec1.z - vec2.z}
-end
-
--- TODO the code below is not used; an error? -> Chromium: check this out
-local function vecdp(vec1, vec2)
-	return vec1.x*vec2.x + vec1.y*vec2.y + vec1.z*vec2.z
-end
 
 local function getNorthCorrection(gPoint)
 	local point = deepCopy(gPoint)
@@ -3998,7 +3902,7 @@ local function kmphToMps(kmph)
 	return kmph/3.6
 end
 
--- TODO the code below is not used; an error? -> Chromium: check this out
+-- revTODO the code below is not used; an error? -> Chromium: check this out -> nope will be used
 local function getHeading(unit, rawHeading)
 	local unitpos = unit:getPosition()
 	if unitpos then
@@ -4048,18 +3952,6 @@ local function avgVec3(tblPos)
     else
         return nil
     end
-end
-
--- TODO the code below is not used; an error? -> Chromium: check this out
-local function getDir(vec, point)
-	local dir = math.atan2(vec.z, vec.x)
-	if point then
-		dir = dir + getNorthCorrection(point)
-	end
-	if dir < 0 then
-		dir = dir + 2 * math.pi	-- put dir in range of 0 to 2*pi
-	end
-	return dir
 end
 
 local function getGroupSpeed(group)
@@ -4184,7 +4076,7 @@ local function tostringMGRS(MGRS, acc)
 	end
 end
 
--- TODO the code below is not used; an error? -> Chromium: check this out
+-- revTODO the code below is not used; an error? -> Chromium: check this out -> nope will be used 
 local function zoneToVec3(zone)
     local new = {}
 	if type(zone) == 'table' then
@@ -4283,8 +4175,8 @@ local function ground_buildWP(point, overRideForm, overRideSpeed)
 	else
 		wp.y = point.y
 	end
-	-- TODO `speed` below is not used; an error? -> Chromium: check this out
-    local form, speed
+
+    local form
 
 	if point.speed and not overRideSpeed then
 		wp.speed = point.speed
@@ -4792,24 +4684,6 @@ if AIEN_io and AIEN_lfs then
 	env.info(("AIEN desanitized additional function loaded"))
 end
 
--- TODO the code below is not used; an error? -> Chromium: check this out
-local function unitTableCheck(unit)
-    if unit then
-        if type(unit) == 'string' then -- assuming name
-            local unitTable = Unit.getByName(unit)
-            return unitTable
-        elseif type(unit) == 'table' then
-            return unit
-        else
-            env.info((tostring(ModuleName) .. ", unitTableCheck: wrong variable"))
-            return nil
-        end
-    else
-        env.info((tostring(ModuleName) .. ", unitTableCheck: missing variable"))
-        return nil
-    end
-end
-
 local function vec3Check(vec3)
     if vec3 then
         if type(vec3) == 'table' then -- assuming name
@@ -4854,15 +4728,6 @@ local function groupAllowedForAI(group)
     return true
 end
 
-
---###### CURRENT MISSION CONDITIONS ################################################################
-
--- road usage. Easy: if it's raining, off-road is not allowed.
-if env.mission.weather.clouds.iprecptns > 0 then
-    -- TODO the code below is not used; an error? -> Chromium: check this out
-    forceRoadUse = true
-end
-
 --###### GROUP AI QUERY FUNCTIONS ##################################################################
 
 -- Below functions has been created to query ground groups for informations about them, most of them used in the key getSA functions that
@@ -4871,7 +4736,7 @@ end
 
 
 --## CAPABILITY CHECKS -- these exist to identify some key characteristics of the group.
--- TODO the code below is not used; an error? -> Chromium: check this out
+-- revTODO the code below is not used; an error? -> Chromium: check this out -> nope will be used
 local function group_hasAttribute(group, attribute) -- group tbl, attribute string (reference on DCS attributes) 
     if group then		
         local units = group:getUnits()
@@ -4896,7 +4761,7 @@ local function group_hasAttribute(group, attribute) -- group tbl, attribute stri
     end
 end
 
--- TODO the code below is not used; an error? -> Chromium: check this out
+-- revTODO the code below is not used; an error? -> Chromium: check this out -> nope will be used
 local function group_hasSensors(group, sensor) -- group tbl, attribute string (reference on DCS attributes) 
     if group then		
         local units = group:getUnits()
@@ -5037,11 +4902,8 @@ end
 local function hasTargets(group, report)
 	if group and group:isExist() == true then
 		local tblUnits = Group.getUnits(group)
-		-- TODO `coalition` below is not used; an error? -> Chromium: check this out
-        local coalition = Group.getCoalition(group)
+
 		if table.getn(tblUnits) > 0 then
-			-- TODO `hastargets` below is not used; an error? -> Chromium: check this out
-            local hastargets = false
 			local tbltargets = {}
 			for _, uData in pairs(tblUnits) do
 				local uController = uData:getController()
@@ -5082,14 +4944,7 @@ local function getGroupClass(group)
 	if group and group:isExist() == true then     
 		local units = group:getUnits()
 		local coa = group:getCoalition()
-
-
-        -- TODO the code below is not used (except for `cls`); an error? -> Chromium: check this out
-        local max_fire_range = 0
-		local u_table = {}
-		local str = 0
 		local cls = "none"
-		local cat = "unknown"
 
 		if units and coa then
             local clsCount = {}
@@ -5246,7 +5101,7 @@ local function getGroupClass(group)
             local mClass = nil
             local mVal = 2
             for class, num in pairs(clsCount) do
-                if num > mVal then -- at least 3 units
+                if num > mVal then
                     mClass = class
                     mVal = num
                 end
@@ -5274,12 +5129,7 @@ local function getUnitClass(unit)
 
 	if unit and unit:isExist() == true then     
 		local coa = unit:getCoalition()
-        -- TODO the code below is not used (except for `cls`); an error? -> Chromium: check this out
-		local max_fire_range = 0
-		local u_table = {}
-		local str = 0
 		local cls = "none"
-		local cat = "unknown"
 
 		if coa then
             if unit:hasAttribute("Air") then
@@ -5324,9 +5174,6 @@ local function getUnitClass(unit)
                 end
             end
             
-            if AIEN.config.AIEN_debugProcessDetail == true then
-               -- env.info((tostring(ModuleName) .. ", getUnitClass, unit " .. tostring(unit:getName()) .. " class: " .. tostring(cls)))
-            end
 			return cls
 
 		else
@@ -5746,7 +5593,7 @@ end
 
 
 --## BASIC STATE ACTION -- these are basic command for the group.
--- TODO the code below is not used; an error? -> Chromium: check this out
+-- revTODO the code below is not used; an error? -> Chromium: check this out -> nope will be used
 local function groupGoQuiet(group)
     if group and group:isExist() == true then	
         local gController = group:getController()
@@ -5758,7 +5605,7 @@ local function groupGoQuiet(group)
     end
 end
 
--- TODO the code below is not used; an error? -> Chromium: check this out
+-- revTODO the code below is not used; an error? -> Chromium: check this out -> nope will be used
 local function groupGoActive(group)
     if group and group:isExist() == true then
         local gController = group:getController()
@@ -6299,8 +6146,6 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                         },
                     }
 
-                    -- TODO `curPri` below is not used; an error? -> Chromium: check this out
-                    local curPri = 0
                     local _search = function(_obj)
                         pcall(function()
                             if _obj ~= nil and Object.getCategory(_obj) == 1 and _obj:isExist() and _obj:getCoalition() == coa then
@@ -6867,17 +6712,6 @@ local function groupDeployTroop(group, nocomeback, exactPos)
     return nil
 end
 
--- TODO the code below is not used; an error? -> Chromium: check this out
-local function groupExtractDeploy(group) -- needed?
-    if group and group:isExist() == true and #group:getUnits() > 0 then
-        if groupCarryInfantry(group) == true then
-            groupDeployTroop(group)
-        else
-            groupExtractTroop(group)
-        end
-    end
-end
-
 local function groupCheckForManpad(group)
 	if group and group:isExist() then
 		local unitsWithTroops = getTroops(group)
@@ -7321,9 +7155,6 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
     if group and ownPos and sa then
 
 		-- nearby building (within AIEN.config.proxyBuildingDistance)
-        -- TODO the `bn` and `near_b` variables below are not used (except `group`); an error? -> Chromium: check this out
-        local bn = 0
-        local near_b = nil
 
         local pN1 = ownPos
         local pN2 = ownPos
@@ -7420,25 +7251,24 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
             end
 
             if p1 or p2 or p3 or p4 then -- at least one should exist
-            -- TODO maybe give this function and variables an english name for readability? -> Chromium: check this out
-            local function trovaPuntoPiuVicino(p0, ...)
-                    local punti = {...}
-                    local puntoPiuVicino = nil
-                    local distanzaMinima = nil
+            local function findNearestPoint(p0, ...)
+                    local points = {...}
+                    local nearestPoint = nil
+                    local minDist = nil
                 
-                    for _, punto in ipairs(punti) do
-                        if punto then
-                            local distanza = getDist(p0, punto)
-                            if not distanzaMinima or distanza < distanzaMinima then
-                                distanzaMinima = distanza
-                                puntoPiuVicino = punto
+                    for _, point in ipairs(points) do
+                        if point then
+                            local dist = getDist(p0, point)
+                            if not minDist or dist < minDist then
+                                minDist = dist
+                                nearestPoint = point
                             end
                         end
                     end
                 
-                    return puntoPiuVicino
+                    return nearestPoint
                 end
-                local dest = trovaPuntoPiuVicino(ownPos, p1, p2, p3, p4)
+                local dest = findNearestPoint(ownPos, p1, p2, p3, p4)
                 
                 if dest then
                     local funcDoAction = function()
@@ -7514,8 +7344,6 @@ local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) -- thi
     end    
     
     if group and ownPos and sa then
-        -- TODO `bestPos` below is not used; an error? -> Chromium: check this out
-        local bestPos = nil
         local bestVal = 0
         local bestTd  = 1000 
         local AllyGroup = nil
@@ -7529,8 +7357,6 @@ local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) -- thi
                             -- within range
                             local d = getDist(p, ownPos)
                             if d and d < AIEN.config.supportDistance and d > 4000 then
-                                -- TODO `bestPos` below is not used; an error? -> Chromium: check this out
-                                bestPos = p
                                 bestTd = td/2
                                 bestVal = supportGroundClasses[og.class]
                                 AllyGroup = og.group
@@ -7663,8 +7489,6 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
     end    
     
     if tgtPos then
-        -- TODO `arty` below is not used; an error? -> Chromium: check this out
-        local arty = nil
         for _, og in pairs(groundgroupsDb) do
             if og.coa == group:getCoalition() and og.tasked == false then
                 if og.class == "ARTY" then --  or og.class == "MLRS" -- not considering MLRS as they're intended for more area or tactical fire
@@ -8364,7 +8188,7 @@ local actionsDb = {
             ["ARBN"] = 5,
         },          
     },
-    -- TODO interesting, does this mean that you planned the "call for air support" feature? -> Chromium: check this out
+    -- revTODO interesting, does this mean that you planned the "call for air support" feature? -> Chromium: check this out -> yes, it will be added as a client request
     --[[
     [11] 	= {
         ["name"] = "ac_airSupport",
@@ -8435,8 +8259,6 @@ local actionsDb = {
 
 -- the functions that handles the reactions, using priorities
 local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
-    -- TODO `act` below is not used; an error? -> Chromium: check this out
-    local act = nil
     if gr and gr:isExist() and ownPos and tgtPos and actTbl and saTbl and skill then
         if actTbl and #actTbl>0 then
             for _, aData in pairs(actTbl) do 
@@ -9008,8 +8830,6 @@ local function update_ARTY()
                                                 -- check ammo
                                                 local ammoAvail = 0
                                                 local units = gData.group:getUnits()
-                                                -- TODO `curPos` below is not used; an error? -> Chromium: check this out
-                                                local curPos = nil
                                                 for _, uData in pairs(units) do
                                                     local ammoTbl = uData:getAmmo()
                                                     if ammoTbl then
@@ -9034,8 +8854,6 @@ local function update_ARTY()
 
                                                     -- check targets   
                                                     local firePoint = nil
-                                                    -- TODO `firePoints` below is not used; an error? -> Chromium: check this out
-                                                    local firePoints = {}
                                                     local targetId = nil
                                                     local _volume = {
                                                         id = world.VolumeType.SPHERE,
@@ -9047,7 +8865,7 @@ local function update_ARTY()
 
                                                     local curPri = 0
                                                     local _search = function(_obj)
-                                                        -- TODO warning with "pcall", it's a costly feature -> Chromium: check this out
+                                                        -- revTODO warning with "pcall", it's a costly feature -> Chromium: check this out  -> wanted to avoid risk of weirdness over DCS bugs
                                                         pcall(function()
                                                             if _obj ~= nil and Object.getCategory(_obj) == 1 and _obj:isExist() and _obj:getCoalition() ~= gData.coa then
                                                                 local _obj_id = _obj:getID()
@@ -9605,7 +9423,7 @@ end
 
 local function event_dead(initiator)
     
-    -- TODO why do this twice (once below and then calling Object.getCategory lower)? -> Chromium: check this out
+    -- revTODO why do this twice (once below and then calling Object.getCategory lower)? -> Chromium: check this out -> cause pcallGetCategory only return the objCat and not subCat 
     local check = pcallGetCategory(initiator)
     
     if check then
