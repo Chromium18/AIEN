@@ -129,8 +129,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0149"
-local Date								= "2025.03.24"
+local Build 							= "0151"
+local Date								= "2025.03.29"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
