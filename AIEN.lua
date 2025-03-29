@@ -3695,23 +3695,6 @@ local function groupTableCheck(group)
     end
 end
 
-local function unitTableCheck(unit)
-    if unit then
-        if type(unit) == 'string' then -- assuming name
-            local unitTable = Unit.getByName(unit)
-            return unitTable
-        elseif type(unit) == 'table' then
-            return unit
-        else
-            env.info((tostring(ModuleName) .. ", unitTableCheck: wrong variable"))
-            return nil
-        end
-    else
-        env.info((tostring(ModuleName) .. ", unitTableCheck: missing variable"))
-        return nil
-    end
-end
-
 local function vec3Check(vec3)
     if vec3 then
         if type(vec3) == 'table' then -- assuming name
