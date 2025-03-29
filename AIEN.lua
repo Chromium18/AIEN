@@ -4782,32 +4782,6 @@ if AIEN_io and AIEN_lfs then
 	env.info(("AIEN desanitized additional function loaded"))
 end
 
-local function groupTableCheck(group)
-    if group then
-        if type(group) == 'string' then -- assuming name
-            local groupTable = Group.getByName(group)
-
-            if not groupTable then
-                groupTable = StaticObject.getByName(group)
-            end
-
-            if groupTable then
-                return groupTable
-            else
-                return nil
-            end
-        elseif type(group) == 'table' then
-            return group
-        else
-            env.info((tostring(ModuleName) .. ", groupTableCheck: wrong variable"))
-            return nil
-        end
-    else
-        env.info((tostring(ModuleName) .. ", groupTableCheck: missing variable"))
-        return nil
-    end
-end
-
 local function unitTableCheck(unit)
     if unit then
         if type(unit) == 'string' then -- assuming name
