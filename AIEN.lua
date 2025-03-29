@@ -4760,7 +4760,7 @@ if AIEN_io and AIEN_lfs then
             local str = nil
             if varInt then
                 if varInt == "basic" then
-                    str = IntegratedbasicSerialize(fname, tabledata)
+                    str = IntegratedbasicSerialize(tabledata)
                 elseif varInt == "cycles" then
                     str = IntegratedserializeWithCycles(fname, tabledata)
                 elseif varInt == "int" then
