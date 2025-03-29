@@ -3695,25 +3695,6 @@ local function groupTableCheck(group)
     end
 end
 
-local function vec3Check(vec3)
-    if vec3 then
-        if type(vec3) == 'table' then -- assuming name
-            if vec3.x and vec3.y and vec3.z then			
-                return vec3
-            else
-                env.info((tostring(ModuleName) .. ", vec3Check: wrong vector format"))
-                return nil
-            end
-        else
-            env.info((tostring(ModuleName) .. ", vec3Check: wrong variable"))
-            return nil
-        end
-    else
-        env.info((tostring(ModuleName) .. ", vec3Check: missing variable"))
-        return nil
-    end
-end
-
 local function aie_random(firstNum, secondNum)
     local lowNum, highNum
     if not secondNum then
