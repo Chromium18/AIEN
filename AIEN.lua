@@ -4818,20 +4818,6 @@ if AIEN_io and AIEN_lfs then
 	env.info(("AIEN desanitized additional function loaded"))
 end
 
-local function getDist(point1, point2)
-    if point1 and point2 then
-        local xUnit = point1.x
-        local yUnit = point1.z
-        local xZone = point2.x
-        local yZone = point2.z
-        local xDiff = xUnit - xZone
-        local yDiff = yUnit - yZone
-        return math.sqrt(xDiff * xDiff + yDiff * yDiff)
-    else
-        return nil
-    end
-end
-
 local function groupTableCheck(group)
     if group then
         if type(group) == 'string' then -- assuming name
