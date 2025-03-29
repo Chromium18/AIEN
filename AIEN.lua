@@ -7018,10 +7018,15 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
         local funcDoAction = function()
             if group:isExist() then
                 local np = nil
+                local maxTries = 1000
                 while not np do
                     if AIEN.config.AIEN_debugProcessDetail then
                         env.info((tostring(ModuleName) .. ", ac_panic creating point..."))
-                    end    
+                    end
+                    maxTries = maxTries - 1
+                    if maxTries < 0 then
+                        break
+                    end
                     np = getRandTerrainPointInCircle(ownPos, AIEN.config.repositionDistance*10, AIEN.config.repositionDistance*5, true)
                 end
                 
