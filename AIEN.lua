@@ -129,8 +129,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0152"
-local Date								= "2025.03.30"
+local Build 							= "0153"
+local Date								= "2025.04.07"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -3583,8 +3583,6 @@ if not tblThreatsRange then
     }
 end
 
-
-
 --###### UTIL FUNCTIONS ############################################################################
 
 -- all the below functions are basically elements used in other part of the code. Many of them are basically copy or modified copy of other useful code and script, 
@@ -3640,6 +3638,36 @@ local function contains(haystack, needle)
     
     -- Controlla se 'needle' è contenuta in 'haystack'
     return haystack:find(escaped_needle) ~= nil
+end
+
+local function vec3Check(vec3)
+    if vec3 then
+        if type(vec3) == 'table' then -- assuming name
+            if vec3.x and vec3.y and vec3.z then			
+                return vec3
+            elseif vec3.x and vec3.y and vec3.z == nil then
+                env.info((tostring(ModuleName) .. ", vec3Check: vector is vec2, converting to vec3"))
+                local new_y = land.getHeight({x = vec3.x, y = vec3.y})
+                
+                if new_y then
+                    local new_Vec3 = {x = vec3.x, y = new_y, z = vec3.y}
+                    return new_Vec3
+                else
+                    env.info((tostring(ModuleName) .. ", vec3Check: vector is vec2, but no height found, returning nil"))
+                    return nil
+                end
+            else
+                env.info((tostring(ModuleName) .. ", vec3Check: wrong vector format"))
+                return nil
+            end
+        else
+            env.info((tostring(ModuleName) .. ", vec3Check: wrong variable"))
+            return nil
+        end
+    else
+        env.info((tostring(ModuleName) .. ", vec3Check: missing variable"))
+        return nil
+    end
 end
 
 local function getDist(point1, point2)
@@ -4682,25 +4710,6 @@ if AIEN_io and AIEN_lfs then
 	end		
 
 	env.info(("AIEN desanitized additional function loaded"))
-end
-
-local function vec3Check(vec3)
-    if vec3 then
-        if type(vec3) == 'table' then -- assuming name
-            if vec3.x and vec3.y and vec3.z then			
-                return vec3
-            else
-                env.info((tostring(ModuleName) .. ", vec3Check: wrong vector format"))
-                return nil
-            end
-        else
-            env.info((tostring(ModuleName) .. ", vec3Check: wrong variable"))
-            return nil
-        end
-    else
-        env.info((tostring(ModuleName) .. ", vec3Check: missing variable"))
-        return nil
-    end
 end
 
 local function round(num, idp)
