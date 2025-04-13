@@ -4463,6 +4463,7 @@ local function genSmokePoints(pos, dist, n)
     return points
 end
 
+--[[ old function temporary here
 local function pcallGetCategory(obj) -- done to avoid DCS errors 
     local function effectiveCheck(obj)
         if obj then
@@ -4492,6 +4493,47 @@ local function pcallGetCategory(obj) -- done to avoid DCS errors
             if AIEN.config.AIEN_debugProcessDetail == true then
 				env.info(("AIEN pcallGetCategory, missing obj"))
 			end	
+            return nil 
+        end
+    end
+    local noError, errorOrResult = pcall(effectiveCheck, obj)
+    if noError then
+        return errorOrResult
+    else
+        env.info(string.format("AIEN pcallGetCategory, error returned when calling the function: %s", errorOrResult or ""))
+    end
+end
+--]]--
+
+local function pcallGetCategory(obj) -- done to avoid DCS errors 
+    local function effectiveCheck(obj)
+        if obj then
+           if obj.isExist and obj:isExist() then
+                if obj:getPosition() then
+                    if Object.getCategory(obj) then
+                        return Object.getCategory(obj)
+                    else
+                        if AIEN.config.AIEN_debugProcessDetail == true then
+                            env.info(("AIEN pcallGetCategory, missing category"))
+                        end    
+                        return nil
+                    end
+                else
+                    if AIEN.config.AIEN_debugProcessDetail == true then
+                        env.info(("AIEN pcallGetCategory, missing pos"))
+                    end    
+                    return nil
+                end
+            else
+                if AIEN.config.AIEN_debugProcessDetail == true then
+                    env.info(("AIEN pcallGetCategory, isExist failed"))
+                end    
+                return nil 
+            end
+        else
+            if AIEN.config.AIEN_debugProcessDetail == true then
+                env.info(("AIEN pcallGetCategory, missing obj"))
+            end    
             return nil 
         end
     end
