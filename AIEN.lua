@@ -429,8 +429,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0151"
-local Date								= "2025.03.29"
+local Build 							= "0154"
+local Date								= "2025.04.13"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -3937,6 +3937,36 @@ local function contains(haystack, needle)
     return haystack:find(escaped_needle) ~= nil
 end
 
+local function vec3Check(vec3)
+    if vec3 then
+        if type(vec3) == 'table' then -- assuming name
+            if vec3.x and vec3.y and vec3.z then			
+                return vec3
+            elseif vec3.x and vec3.y and vec3.z == nil then
+                AIEN.loggers.get(AIEN.Id):info("vec3Check: vector is vec2, converting to vec3")
+                local new_y = land.getHeight({x = vec3.x, y = vec3.y})
+                
+                if new_y then
+                    local new_Vec3 = {x = vec3.x, y = new_y, z = vec3.y}
+                    return new_Vec3
+                else
+                    AIEN.loggers.get(AIEN.Id):info("vec3Check: vector is vec2, but no height found, returning nil")
+                    return nil
+                end
+            else
+                AIEN.loggers.get(AIEN.Id):info("vec3Check: wrong vector format")
+                return nil
+            end
+        else
+            AIEN.loggers.get(AIEN.Id):info("vec3Check: wrong variable")
+            return nil
+        end
+    else
+        AIEN.loggers.get(AIEN.Id):info("vec3Check: missing variable")
+        return nil
+    end
+end
+
 local function getDist(point1, point2)
     local xUnit = point1.x
     local yUnit = nil
@@ -3979,25 +4009,6 @@ local function groupTableCheck(group)
         end
     else
         AIEN.loggers.get(AIEN.Id):info("groupTableCheck: missing variable")
-        return nil
-    end
-end
-
-local function vec3Check(vec3)
-    if vec3 then
-        if type(vec3) == 'table' then -- assuming name
-            if vec3.x and vec3.y and vec3.z then			
-                return vec3
-            else
-                AIEN.loggers.get(AIEN.Id):info("vec3Check: wrong vector format")
-                return nil
-            end
-        else
-            AIEN.loggers.get(AIEN.Id):info("vec3Check: wrong variable")
-            return nil
-        end
-    else
-        AIEN.loggers.get(AIEN.Id):info("vec3Check: missing variable")
         return nil
     end
 end
@@ -4747,10 +4758,89 @@ local function genSmokePoints(pos, dist, n)
     return points
 end
 
+--[[ old function temporary here
 local function pcallGetCategory(obj) -- done to avoid DCS errors 
     local function effectiveCheck(obj)
         if obj then
            if obj:isExist() then
+                if obj:getPosition() then
+                    if Object.getCategory(obj) then
+                        return Object.getCategory(obj)
+                    else
+                        if AIEN.config.AIEN_debugProcessDetail == true then
+                            env.info(("AIEN pcallGetCategory, missing category"))
+                        end	
+                        return nil
+                    end
+                else
+                    if AIEN.config.AIEN_debugProcessDetail == true then
+                        env.info(("AIEN pcallGetCategory, missing pos"))
+                    end	
+                    return nil
+                end
+            else
+                if AIEN.config.AIEN_debugProcessDetail == true then
+                    env.info(("AIEN pcallGetCategory, isExist failed"))
+                end	
+                return nil 
+            end
+        else
+            if AIEN.config.AIEN_debugProcessDetail == true then
+				env.info(("AIEN pcallGetCategory, missing obj"))
+			end	
+            return nil 
+        end
+    end
+    local noError, errorOrResult = pcall(effectiveCheck, obj)
+    if noError then
+        return errorOrResult
+    else
+        env.info(string.format("AIEN pcallGetCategory, error returned when calling the function: %s", errorOrResult or ""))
+    end
+end
+--]]--
+
+local function pcallGetCategory(obj) -- done to avoid DCS errors 
+    local function effectiveCheck(obj)
+        if obj then
+           if obj.isExist and obj:isExist() then
+                if obj:getPosition() then
+                    if Object.getCategory(obj) then
+                        return Object.getCategory(obj)
+                    else
+                        AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing category")
+                        
+                        return nil
+                    end
+                else
+                    AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing pos")
+                    
+                    return nil
+                end
+            else
+                AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, isExist failed")
+                
+                return nil 
+            end
+        else
+            AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing obj")
+			
+            return nil 
+        end
+    end
+    local noError, errorOrResult = pcall(effectiveCheck, obj)
+    if noError then
+        return errorOrResult
+    else
+        AIEN.loggers.get(AIEN.Id):warn("pcallGetCategory, error returned when calling the function: %s", errorOrResult)
+    end
+end
+--]]--
+
+local function pcallGetCategory(obj) -- done to avoid DCS errors 
+    local function effectiveCheck(obj)
+        if obj then
+           if obj.isExist and obj:isExist() then
                 if obj:getPosition() then
                     if Object.getCategory(obj) then
                         return Object.getCategory(obj)
@@ -4991,7 +5081,6 @@ if AIEN_io and AIEN_lfs then
 
 	AIEN.loggers.get(AIEN.Id):info("desanitized additional function loaded")
 end
-
 
 local function round(num, idp)
     local mult = 10^(idp or 0)
