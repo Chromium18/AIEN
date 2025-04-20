@@ -65,10 +65,9 @@ AIEN.config.message_feed        = true 		-- true/false. If true, each relevant A
 AIEN.config.mark_on_f10_map     = true 	    -- true/false. If true, when an artillery fire mission is ongoing, a markpoint will appear on the map of the allied coalition to show the expected impact point
 AIEN.config.skill_action_const  = false     -- true/false. If true, AI available reactions types will be limited by the group average skill. If not, almost 2/3 of all available actions will be always be available regardless of the group skills
 
--- User bug report: prior to report a bug, please try reproducing it with this variable set to "true"
-AIEN.config.AIEN_debugProcessDetail = true
-
-
+-- User bug report: prior to report a bug, please try reproducing it with this variable set to "debug" (uncomment the commented line below).
+AIEN.LogLevel = "info"
+--AIEN.LogLevel = "trace"
 
 --## LOCAL HIGH LEVEL VARIABLES ##
 -- changing the variable below is for fine customization, but it's not recommended cause it can change the code behaviour. 
@@ -112,6 +111,307 @@ AIEN.config.withrawDist                       = 15000             -- m, maximum 
 --###### DO NOT CHANGE CODE BELOW HERE ###############################################################
 --####################################################################################################
 
+--###### LOGGING ############################################################################
+
+-- The code below is used to log the information in the script.
+-- The log is saved in the DCS log folder, and it is possible to set the level of logging for each module.
+-- The logging system is _pluggable_, meaning that you can use any logging system you want by registering a new logger instead of the default one
+AIEN.Id = "AIEN"
+
+AIEN.Logger =
+{
+    -- technical name
+    name = nil,
+    -- logging level
+    level = nil,
+}
+AIEN.Logger.__index = AIEN.Logger
+
+AIEN.Logger.LEVEL = {
+    ["error"]=1,
+    ["warning"]=2,
+    ["info"]=3,
+    ["debug"]=4,
+    ["trace"]=5,
+}
+
+function AIEN.p(o, level, skip, includeMeta, dontRecurse)
+    if o and type(o) == "table" and (o.x and o.z and o.y and #o == 3) then
+        return string.format("{x=%s, z=%s, y=%s}", AIEN.p(o.x), AIEN.p(o.z), AIEN.p(o.y))
+    elseif o and type(o) == "table" and (o.x and o.y and #o == 2)  then
+        return string.format("{x=%s, y=%s}", AIEN.p(o.x), AIEN.p(o.y))
+    end
+    local skip = skip
+    if skip and type(skip)=="table" then
+        for _, value in ipairs(skip) do
+            skip[value]=true
+        end
+    end
+    return AIEN._p(o, level, skip, includeMeta, dontRecurse)
+end
+
+function AIEN._p(o, level, skip, includeMeta, dontRecurse)
+    local MAX_LEVEL = 20
+    if level == nil then level = 0 end
+    if level > MAX_LEVEL then
+        AIEN.loggers.get(AIEN.Id):error("max depth reached in AIEN.p : "..tostring(MAX_LEVEL))
+        return ""
+    end
+    local text = ""
+    if o == nil then
+        text = "[nil]"
+    elseif (type(o) == "table") and not(dontRecurse) then
+        text = "\n"
+        local keys = {}
+        local values = {}
+        for key, value in pairs(o) do
+            local sKey = tostring(key)
+            table.insert(keys, sKey)
+            values[sKey] = value
+        end
+        table.sort(keys)
+        for _, key in pairs(keys) do
+            local value = values[key]
+            for i=0, level do
+                text = text .. " "
+            end
+            if not (skip and skip[key]) then
+                text = text .. ".".. key.."="..AIEN.p(value, level+1, skip, includeMeta, dontRecurse) .. "\n"
+            else
+                text = text .. ".".. key.."= [[SKIPPED]]\n"
+            end
+        end
+        if includeMeta then
+            local metatable = getmetatable(o)
+            if metatable then
+                text = "\n"
+                local keys = {}
+                local values = {}
+                for key, value in pairs(metatable) do
+                    local sKey = tostring(key)
+                    table.insert(keys, sKey)
+                    values[sKey] = value
+                end
+                table.sort(keys)
+                for _, key in pairs(keys) do
+                    local value = values[key]
+                    for i=0, level do
+                        text = text .. " "
+                    end
+                    if not (skip and skip[key]) then
+                        if key == "getID" then
+                            value = o:getID()
+                        elseif key == "getName" then
+                            value = o:getName()
+                        elseif key == "getTypeName" then
+                            value = o:getTypeName()
+                        elseif key == "getDesc" then
+                            value = o:getDesc()
+                        end
+                        text = text .. "[META].".. key.."="..AIEN.p(value, level+1, skip, includeMeta, true) .. "\n"
+                    else
+                        text = text .. "[META].".. key.."= [[SKIPPED]]\n"
+                    end
+                end
+            end
+        end
+    elseif (type(o) == "function") then
+        text = "[function]"
+    elseif (type(o) == "boolean") then
+        if o == true then
+            text = "[true]"
+        else
+            text = "[false]"
+        end
+    else
+        text = tostring(o)
+    end
+    return text
+end
+
+function AIEN.Logger:new(name, level)
+    local self = setmetatable({}, AIEN.Logger)
+    self:setName(name)
+    self:setLevel(level)
+    return self
+end
+
+function AIEN.Logger:setName(value)
+    self.name = value
+    return self
+end
+
+function AIEN.Logger:getName()
+    return self.name
+end
+
+function AIEN.Logger:setLevel(value, force)
+    local level = value
+    if type(level) == "string" then
+        level = AIEN.Logger.LEVEL[level:lower()]
+    end
+    if not level then
+        level = AIEN.Logger.LEVEL["info"]
+    end
+    self.level = level
+    return self
+end
+
+function AIEN.Logger:getLevel()
+    return self.level
+end
+
+function AIEN.Logger.splitText(text)
+    local tbl = {}
+    while text:len() > 4000 do
+        local sub = text:sub(1, 4000)
+        text = text:sub(4001)
+        table.insert(tbl, sub)
+    end
+    table.insert(tbl, text)
+    return tbl
+end
+
+function AIEN.Logger.formatText(text, ...)
+    if not text then
+        return ""
+    end
+    if type(text) ~= 'string' then
+        text = AIEN.p(text)
+    else
+        local args = ...
+        if args and args.n and args.n > 0 then
+            local pArgs = {}
+            for i=1,args.n do
+                pArgs[i] = AIEN.p(args[i])
+            end
+                text = text:format(unpack(pArgs))
+            end
+        end
+    local fName = nil
+    local cLine = nil
+    if debug and debug.getinfo then
+        local dInfo = debug.getinfo(3)
+        fName = dInfo.name
+        cLine = dInfo.currentline
+        --local fsrc = dinfo.short_src
+        --local fLine = dInfo.linedefined
+    end
+    if fName and cLine then
+        return fName .. '|' .. cLine .. ': ' .. text
+    elseif cLine then
+        return cLine .. ': ' .. text
+    else
+        return ' ' .. text
+    end
+end
+
+function AIEN.Logger:print(level, text)
+    local texts = AIEN.Logger.splitText(text)
+    local levelChar = 'E'
+    local logFunction = env.error
+    if level == AIEN.Logger.LEVEL["warning"] then
+        levelChar = 'W'
+        logFunction = env.warning
+    elseif level == AIEN.Logger.LEVEL["info"] then
+        levelChar = 'I'
+        logFunction = env.info
+    elseif level == AIEN.Logger.LEVEL["debug"] then
+        levelChar = 'D'
+        logFunction = env.info
+    elseif level == AIEN.Logger.LEVEL["trace"] then
+        levelChar = 'T'
+        logFunction = env.info
+    end
+    for i = 1, #texts do
+        if i == 1 then
+            logFunction(self.name .. '|' .. levelChar .. '|' .. texts[i])
+        else
+            logFunction(texts[i])
+        end
+    end
+end
+
+function AIEN.Logger:error(text, ...)
+    if self.level >= 1 then
+        text = AIEN.Logger.formatText(text, arg)
+        local mText = text
+		if debug and debug.traceback then
+			mText = mText .. "\n" .. debug.traceback()
+		end
+        self:print(1, mText)
+    end
+end
+
+function AIEN.Logger:warn(text, ...)
+    if self.level >= 2 then
+        text = AIEN.Logger.formatText(text, arg)
+        self:print(2, text)
+    end
+end
+
+function AIEN.Logger:info(text, ...)
+    if self.level >= 3 then
+        text = AIEN.Logger.formatText(text, arg)
+        self:print(3, text)
+    end
+end
+
+function AIEN.Logger:debug(text, ...)
+    if self.level >= 4 then
+        text = AIEN.Logger.formatText(text, arg)
+        self:print(4, text)
+    end
+end
+
+function AIEN.Logger:trace(text, ...)
+    if self.level >= 5 then
+        text = AIEN.Logger.formatText(text, arg)
+        self:print(5, text)
+    end
+end
+
+function AIEN.Logger:wouldLogWarn()
+    return self.level >= 2
+end
+
+function AIEN.Logger:wouldLogInfo()
+    return self.level >= 3
+end
+
+function AIEN.Logger:wouldLogDebug()
+    return self.level >= 4
+end
+
+function AIEN.Logger:wouldLogTrace()
+    return self.level >= 5
+end
+
+AIEN.loggers = {}
+AIEN.loggers.dict = {}
+
+function AIEN.loggers.new(loggerId, level)
+    if not loggerId or #loggerId == 0 then
+        return nil
+    end
+    local result = AIEN.Logger:new(loggerId:upper(), level)
+    AIEN.loggers.dict[loggerId:lower()] = result
+    return result
+end
+
+function AIEN.loggers.get(loggerId)
+    local result = nil
+    if loggerId and #loggerId > 0 then
+        result = AIEN.loggers.dict[loggerId:lower()]
+    end
+    if not result then
+        result = AIEN.loggers.get("AIEN")
+    end
+    return result
+end
+
+AIEN.loggers.new(AIEN.Id, AIEN.LogLevel)
+
 --###### CONFIG AND VARIABLES ########################################################################
 
 --## MAIN VARIABLES
@@ -121,7 +421,7 @@ local markIdStart                       = 12345000000
 
 -- DSMC version of the script check: if already there due to DSMC version, the script won't be loaded.
 if AIEN.performPhaseCycle then
-    env.info(("AIEN already there in another way, stopping"))
+    env.error("AIEN already there in another way, stopping")
     return
 end
 
@@ -315,21 +615,18 @@ local dismountTeamsEast = {
 if env.mission and env.mission.date and env.mission.date.Year then
     local y = tonumber(env.mission.date.Year)
 
-    if AIEN.config.AIEN_debugProcessDetail == true then
-        env.info(("AIEN mission date: " .. tostring(y)))
-    end
+    AIEN.loggers.get(AIEN.Id):trace("AIEN mission date: %s", y)
+    
 
     if y < 1980 then
         dismountTeamsWest["manpads"] = nil
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN removed stinger"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("AIEN removed stinger")
+        
     elseif y < 1970 then
         dismountTeamsEast["manpads"] = nil
         dismountTeamsWest["manpads"] = nil
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN removed all manpads"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("AIEN removed all manpads")
+        
     end
 end
 
@@ -3646,26 +3943,26 @@ local function vec3Check(vec3)
             if vec3.x and vec3.y and vec3.z then			
                 return vec3
             elseif vec3.x and vec3.y and vec3.z == nil then
-                env.info((tostring(ModuleName) .. ", vec3Check: vector is vec2, converting to vec3"))
+                AIEN.loggers.get(AIEN.Id):info("vec3Check: vector is vec2, converting to vec3")
                 local new_y = land.getHeight({x = vec3.x, y = vec3.y})
                 
                 if new_y then
                     local new_Vec3 = {x = vec3.x, y = new_y, z = vec3.y}
                     return new_Vec3
                 else
-                    env.info((tostring(ModuleName) .. ", vec3Check: vector is vec2, but no height found, returning nil"))
+                    AIEN.loggers.get(AIEN.Id):info("vec3Check: vector is vec2, but no height found, returning nil")
                     return nil
                 end
             else
-                env.info((tostring(ModuleName) .. ", vec3Check: wrong vector format"))
+                AIEN.loggers.get(AIEN.Id):info("vec3Check: wrong vector format")
                 return nil
             end
         else
-            env.info((tostring(ModuleName) .. ", vec3Check: wrong variable"))
+            AIEN.loggers.get(AIEN.Id):info("vec3Check: wrong variable")
             return nil
         end
     else
-        env.info((tostring(ModuleName) .. ", vec3Check: missing variable"))
+        AIEN.loggers.get(AIEN.Id):info("vec3Check: missing variable")
         return nil
     end
 end
@@ -3707,11 +4004,11 @@ local function groupTableCheck(group)
         elseif type(group) == 'table' then
             return group
         else
-            env.info((tostring(ModuleName) .. ", groupTableCheck: wrong variable"))
+            AIEN.loggers.get(AIEN.Id):info("groupTableCheck: wrong variable")
             return nil
         end
     else
-        env.info((tostring(ModuleName) .. ", groupTableCheck: missing variable"))
+        AIEN.loggers.get(AIEN.Id):info("groupTableCheck: missing variable")
         return nil
     end
 end
@@ -3904,7 +4201,7 @@ local function multyTypeMessage(var)
             end
 
         else
-            env.info((tostring(ModuleName) .. " multyTypeMessage, mexText is not a valid input"))
+            AIEN.loggers.get(AIEN.Id):info("multyTypeMessage, mexText is not a valid input")
         end
     end
 
@@ -4185,9 +4482,8 @@ local function getPayload(unitName)
 			end
 		end
 	else
-		if AIEN.config.AIEN_debugProcessDetail then
-			env.info(ModuleName .. " getPayload error, no gId or unitId")
-		end	
+		AIEN.loggers.get(AIEN.Id):trace("getPayload error, no gId or unitId")
+		
 		return false
 	end
 	return
@@ -4278,9 +4574,8 @@ local function dynAdd(ng)
 	end
 
 	if newCountry == '' then
-		if AIEN.config.AIEN_debugProcessDetail then
-			env.info(ModuleName .. " dynAdd Country not found")
-		end		
+		AIEN.loggers.get(AIEN.Id):trace("dynAdd Country not found")
+		
 		return false
 	end
 
@@ -4513,27 +4808,23 @@ local function pcallGetCategory(obj) -- done to avoid DCS errors
                     if Object.getCategory(obj) then
                         return Object.getCategory(obj)
                     else
-                        if AIEN.config.AIEN_debugProcessDetail == true then
-                            env.info(("AIEN pcallGetCategory, missing category"))
-                        end    
+                        AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing category")
+                        
                         return nil
                     end
                 else
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info(("AIEN pcallGetCategory, missing pos"))
-                    end    
+                    AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing pos")
+                    
                     return nil
                 end
             else
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info(("AIEN pcallGetCategory, isExist failed"))
-                end    
+                AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, isExist failed")
+                
                 return nil 
             end
         else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN pcallGetCategory, missing obj"))
-            end    
+            AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing obj")
+			
             return nil 
         end
     end
@@ -4541,7 +4832,44 @@ local function pcallGetCategory(obj) -- done to avoid DCS errors
     if noError then
         return errorOrResult
     else
-        env.info(string.format("AIEN pcallGetCategory, error returned when calling the function: %s", errorOrResult or ""))
+        AIEN.loggers.get(AIEN.Id):warn("pcallGetCategory, error returned when calling the function: %s", errorOrResult)
+    end
+end
+--]]--
+
+local function pcallGetCategory(obj) -- done to avoid DCS errors 
+    local function effectiveCheck(obj)
+        if obj then
+           if obj.isExist and obj:isExist() then
+                if obj:getPosition() then
+                    if Object.getCategory(obj) then
+                        return Object.getCategory(obj)
+                    else
+                        AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing category")
+                        
+                        return nil
+                    end
+                else
+                    AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing pos")
+                    
+                    return nil
+                end
+            else
+                AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, isExist failed")
+                
+                return nil 
+            end
+        else
+            AIEN.loggers.get(AIEN.Id):trace("pcallGetCategory, missing obj")
+			
+            return nil 
+        end
+    end
+    local noError, errorOrResult = pcall(effectiveCheck, obj)
+    if noError then
+        return errorOrResult
+    else
+        AIEN.loggers.get(AIEN.Id):warn("pcallGetCategory, error returned when calling the function: %s", errorOrResult)
     end
 end
 
@@ -4551,7 +4879,7 @@ end
 -- to print out tables of the databases created in it.
 
 if AIEN_io and AIEN_lfs then
-	env.info(("AIEN loading desanitized additional function"))
+	AIEN.loggers.get(AIEN.Id):info("loading desanitized additional function")
 
     function IntegratedbasicSerialize(s)
         if s == nil then
@@ -4751,7 +5079,7 @@ if AIEN_io and AIEN_lfs then
 		end
 	end		
 
-	env.info(("AIEN desanitized additional function loaded"))
+	AIEN.loggers.get(AIEN.Id):info("desanitized additional function loaded")
 end
 
 local function round(num, idp)
@@ -4799,15 +5127,13 @@ local function group_hasAttribute(group, attribute) -- group tbl, attribute stri
 			end
 			return false
 		else
-		    if AIEN.config.AIEN_debugProcessDetail == true then
-				env.info(("AIEN group_hasAttribute, no units retrievable"))
-			end	
+		    AIEN.loggers.get(AIEN.Id):trace("group_hasAttribute, no units retrievable")
+			
 			return false
 		end
 	else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN group_hasAttribute, missing variable"))
-        end	
+        AIEN.loggers.get(AIEN.Id):trace("group_hasAttribute, missing variable")
+        
 		return false		
     end
 end
@@ -4856,15 +5182,13 @@ local function group_hasSensors(group, sensor) -- group tbl, attribute string (r
 			
 			return optic, ir, radar, irst
 		else
-		    if AIEN.config.AIEN_debugProcessDetail == true then
-				env.info((tostring(ModuleName) .. ", hasSensors no units retrievable"))
-			end	
+		    AIEN.loggers.get(AIEN.Id):trace("hasSensors no units retrievable")
+			
 			return false
 		end
 	else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", hasSensors missing variable"))
-        end	
+        AIEN.loggers.get(AIEN.Id):trace("hasSensors missing variable")
+        
 		return false		
     end
 end
@@ -4915,11 +5239,11 @@ local function groupLowAmmo(group)
                     end
                 end
             else
-                env.info(("AIEN.groupLowAmmo, tblUnits is 0"))
+                AIEN.loggers.get(AIEN.Id):info("AIEN.groupLowAmmo, tblUnits is 0")
                 return false				
             end
         else
-            env.info(("AIEN.groupLowAmmo, missing tblUnits or groupSize"))
+            AIEN.loggers.get(AIEN.Id):info("AIEN.groupLowAmmo, missing tblUnits or groupSize")
             return false		
         end
 
@@ -4931,7 +5255,7 @@ local function groupLowAmmo(group)
                 return false
             end
         else
-            env.info(("AIEN.groupLowAmmo, error calculating fraction"))
+            AIEN.loggers.get(AIEN.Id):info("AIEN.groupLowAmmo, error calculating fraction")
             return false		
         end
     end
@@ -4981,11 +5305,11 @@ local function hasTargets(group, report)
 			return false
 			
 		else
-			env.info(("AIEN.hasTargets: tblUnits has 0 units"))
+			AIEN.loggers.get(AIEN.Id):info("AIEN.hasTargets: tblUnits has 0 units")
 			return false			
 		end
 	else
-		env.info(("AIEN.hasTargets: group is nil"))
+		AIEN.loggers.get(AIEN.Id):info("AIEN.hasTargets: group is nil")
 		return false	
 	end	
 end
@@ -5152,7 +5476,7 @@ local function getGroupClass(group)
             local mClass = nil
             local mVal = 2
             for class, num in pairs(clsCount) do
-                if num > mVal then
+                if num > mVal then -- at least 3 units
                     mClass = class
                     mVal = num
                 end
@@ -5161,17 +5485,16 @@ local function getGroupClass(group)
                 cls = mClass
             end
             
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", getGroupClass, group " .. tostring(group:getName()) .. " class: " .. tostring(cls)))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("getGroupClass, group %s class %s", group and group:getName(), cls)
+            
 			return cls
 
 		else
-			env.info((tostring(ModuleName) .. ", getGroupClass, missing units"))
+			AIEN.loggers.get(AIEN.Id):info("getGroupClass, missing units")
 			return false
 		end
 	else
-		env.info((tostring(ModuleName) .. ", getGroupClass, missing group"))
+		AIEN.loggers.get(AIEN.Id):info("getGroupClass, missing group")
 		return false
 	end
 end
@@ -5225,21 +5548,23 @@ local function getUnitClass(unit)
                 end
             end
             
+            AIEN.loggers.get(AIEN.Id):trace("getUnitClass, unit %s class %s", unit and unit:getName(), cls)
+            
 			return cls
 
 		else
-			env.info((tostring(ModuleName) .. ", getUnitClass, missing coa"))
+			AIEN.loggers.get(AIEN.Id):info("getUnitClass, missing coa")
 			return false
 		end
 	else
-		env.info((tostring(ModuleName) .. ", getUnitClass, missing unit"))
+		AIEN.loggers.get(AIEN.Id):info("getUnitClass, missing unit")
 		return false
 	end
 end
 
 local function getGroupSkillNum(g) -- important: this try to create an "average skill scoring number" that will be used a lot elsewhere, i.e. for defining reaction time or even the available reactions. AIEN does not handle well the "Random" skill value (cause DCS skill is not available in real time): for best purpose, you should define the skill value of your ground units in the ME.
     local id = g:getID()
-    --env.info((tostring(ModuleName) .. ", getGroupSkillNum: skLevel " .. tostring(g:getName()) ))
+    --AIEN.loggers.get(AIEN.Id):info("getGroupSkillNum: skLevel %s", g and g:getName())
 	for _,coalition in pairs(env.mission["coalition"]) do
 		for _,country in pairs(coalition["country"]) do
 			for attrID,attr in pairs(country) do
@@ -5248,7 +5573,7 @@ local function getGroupSkillNum(g) -- important: this try to create an "average 
 						for _,group in pairs(attr["group"]) do
 							if (group) then	
                                 if group.groupId == id then
-                                    --env.info((tostring(ModuleName) .. ", getGroupSkillNum: skLevel " .. tostring(g:getName()).. " group found" ))
+                                    --AIEN.loggers.get(AIEN.Id):info("getGroupSkillNum: skLevel %s group found", g and g:getName())
                                     local skLevel = 0
                                     local unitsCount = 0
                                 
@@ -5261,15 +5586,14 @@ local function getGroupSkillNum(g) -- important: this try to create an "average 
                                             end
                                             skLevel = skLevel + val
                                             unitsCount = unitsCount + 1
-                                            --env.info((tostring(ModuleName) .. ", getGroupSkillNum: skLevel " .. tostring(skLevel) .. ", unit num " .. tostring(unitsCount) ))
+                                            --AIEN.loggers.get(AIEN.Id):info("getGroupSkillNum: skLevel %s, unit num %s", skLevel, unitsCount)
                                         end
                                     end
 
                                     if skLevel > 0 then
                                         local k =  math.floor((skLevel/unitsCount)*10)/10
-                                        if AIEN.config.AIEN_debugProcessDetail == true then
-                                            env.info((tostring(ModuleName) .. ", getGroupSkillNum: skLevel " .. tostring(k)))
-                                        end
+                                        AIEN.loggers.get(AIEN.Id):trace("getGroupSkillNum: skLevel %s", k)
+                                        
                                         return k
                                     else
                                         return 3
@@ -5282,7 +5606,7 @@ local function getGroupSkillNum(g) -- important: this try to create an "average 
 			end
 		end
 	end	
-    --env.info((tostring(ModuleName) .. ", getGroupSkillNum: sklevel not retournable, going random"))
+    --AIEN.loggers.get(AIEN.Id):info("getGroupSkillNum: sklevel not retournable, going random")
     return aie_random(2,5)
 end
 
@@ -5316,9 +5640,8 @@ local function getRanges(group)
         return maxDec, maxThr
 		
 	else
-		if AIEN.config.AIEN_debugProcessDetail then
-			env.info((tostring(ModuleName) .. ", getRanges failed, group variable is nil"))
-		end
+		AIEN.loggers.get(AIEN.Id):trace("getRanges failed, group variable is nil")
+		
 		
 	end
 end
@@ -5344,9 +5667,8 @@ local function getLeadPos(group)
 			return leader:getPosition().p
 		end
 	else
-		if AIEN.config.AIEN_debugProcessDetail then
-			env.info((tostring(ModuleName) .. ", getLeadPos failed, group variable is nil"))
-		end
+		AIEN.loggers.get(AIEN.Id):trace("getLeadPos failed, group variable is nil")
+		
 		
 	end
 end
@@ -5363,9 +5685,8 @@ local function getTroops(group)
 			end
 			
 			if troopsTbl and next(troopsTbl) ~= nil then
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info(("AIEN.getTroops, returning troopstbl for: " .. tostring(group:getName()) ))
-                end	
+                AIEN.loggers.get(AIEN.Id):trace("AIEN.getTroops, returning troopstbl for: %s", group and group:getName())
+                
 				return troopsTbl
 			end
 		end
@@ -5377,9 +5698,8 @@ local function getDangerClose(vec3, coa, range)
     if vec3 and type(vec3) == "table" and coa then
         if vec3.x and vec3.y and vec3.z then
             if not range or type(range) ~= "number" then
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info((tostring(ModuleName) .. ", getDangerClose: range missing reverted to 500 m "))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("getDangerClose: range missing reverted to 500 m ")
+                
                 range = 500
             end
 
@@ -5398,9 +5718,8 @@ local function getDangerClose(vec3, coa, range)
                 pcall(function()
                     if _obj ~= nil and _obj:isExist() and Object.getCategory(_obj) == 1 and _obj:getCoalition() == coa then
                         friendly = true
-                        if AIEN.config.AIEN_debugProcessDetail == true then
-                            env.info((tostring(ModuleName) .. ", getDangerClose: found friendly unit"))
-                        end
+                        AIEN.loggers.get(AIEN.Id):trace("getDangerClose: found friendly unit")
+                        
                         return -- is this ok?
                     end
                 end)
@@ -5623,15 +5942,13 @@ local function getSA(group) -- built a situational awareness check
                 return false
             end
         else
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", group not in db"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("group not in db")
+            
             return false
         end
 	else
-		if AIEN.config.AIEN_debugProcessDetail then
-			env.info((tostring(ModuleName) .. ", group doesn't exist"))
-		end	
+		AIEN.loggers.get(AIEN.Id):trace("group doesn't exist")
+		
 		return false
 	end
 end
@@ -5650,9 +5967,8 @@ local function groupGoQuiet(group)
         local gController = group:getController()
         gController:setOption(AI.Option.Ground.id.ALARM_STATE, 1) -- green -- Ground or GROUND?
         gController:setOption(AI.Option.Ground.id.ROE, 3) -- return fire -- Ground or GROUND?
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN.groupGoQuiet status quiet"))
-        end			
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.groupGoQuiet status quiet")
+        
     end
 end
 
@@ -5662,9 +5978,8 @@ local function groupGoActive(group)
         local gController = group:getController()
         gController:setOption(AI.Option.Ground.id.ALARM_STATE, 2) -- red -- Ground or GROUND?
         gController:setOption(AI.Option.Ground.id.ROE, 3) -- return fire -- Ground or GROUND?
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN.groupGoActive status active and return fire"))
-        end				
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.groupGoActive status active and return fire")
+        
     end
 end
 
@@ -5673,9 +5988,8 @@ local function groupGoShoot(group)
         local gController = group:getController()
         gController:setOption(AI.Option.Ground.id.ALARM_STATE, 2) -- red -- Ground or GROUND?
         gController:setOption(AI.Option.Ground.id.ROE, 2) -- open fire -- Ground or GROUND?
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN.groupGoShoot status fire at will"))
-        end			
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.groupGoShoot status fire at will")
+        
     end
 end
 
@@ -5684,14 +5998,13 @@ local function groupAllowDisperse(group)
         local gController = group:getController()
         if gController then
             gController:setOption(AI.Option.Ground.id.DISPERSE_ON_ATTACK, AIEN.config.disperseActionTime) -- Ground or GROUND?
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN.groupAllowDisperse will allow dispersal"))
-            end		
+            AIEN.loggers.get(AIEN.Id):trace("AIEN.groupAllowDisperse will allow dispersal")
+            
         else
-            env.info(("AIEN.groupAllowDisperse, missing controller for: " .. tostring(group:getName())))
+            AIEN.loggers.get(AIEN.Id):info("AIEN.groupAllowDisperse, missing controller for: %s", group and group:getName())
         end	
     else
-        env.info(("AIEN.groupAllowDisperse, missing group"))        
+        AIEN.loggers.get(AIEN.Id):info("AIEN.groupAllowDisperse, missing group")
     end
 end
 
@@ -5700,14 +6013,13 @@ local function groupPreventDisperse(group)
         local gController = group:getController()
         if gController then
             gController:setOption(AI.Option.Ground.id.DISPERSE_ON_ATTACK, false) -- Ground or GROUND?
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN.groupPreventDisperse will prevent dispersal"))
-            end		
+            AIEN.loggers.get(AIEN.Id):trace("AIEN.groupPreventDisperse will prevent dispersal")
+            
         else
-            env.info(("AIEN.groupPreventDisperse, missing controller for: " ..tostring(group:getName())))
+            AIEN.loggers.get(AIEN.Id):info("AIEN.groupPreventDisperse, missing controller for: %s", group and group:getName())
         end
     else
-        env.info(("AIEN.groupPreventDisperse, missing group"))    
+        AIEN.loggers.get(AIEN.Id):info("AIEN.groupPreventDisperse, missing group")
     end
 end
 
@@ -5719,9 +6031,8 @@ local function groupSuppress(group) -- quite important: provide random "suppress
 			local st = getReactionTime(s)*2
 			
             c:setOption(AI.Option.Ground.id.ROE, 4)
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN.groupSuppress group has been suppressed " .. tostring(group:getName()) ))
-            end	
+            AIEN.loggers.get(AIEN.Id):trace("AIEN.groupSuppress group has been suppressed %s", group and group:getName())
+            
             local back = function()
                 c:setOption(AI.Option.Ground.id.ROE, 2)
             end
@@ -5736,13 +6047,11 @@ end
 --## MISSION ACTION -- these are more advanced command for groups
 local function groupfireAtPoint(var)
     local group = var[1] -- groupTableCheck(var[1])
-    if AIEN.config.AIEN_debugProcessDetail == true then
-        env.info((tostring(ModuleName) .. ", groupfireAtPoint group check"))
-    end	
+    AIEN.loggers.get(AIEN.Id):trace("groupfireAtPoint group check")
+    
     if group and group:isExist() then
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", groupfireAtPoint group name: " .. tostring(group:getName())))
-        end	
+        AIEN.loggers.get(AIEN.Id):trace("groupfireAtPoint group name: %s", group and group:getName())
+        
         local gController = group:getController()
         local vec3 = vec3Check(var[2])
         local qty = var[3]
@@ -5750,9 +6059,8 @@ local function groupfireAtPoint(var)
         local radi = var[5]
 
         if gController and vec3 then
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", groupfireAtPoint controller and vec3 identified"))
-            end	
+            AIEN.loggers.get(AIEN.Id):trace("groupfireAtPoint controller and vec3 identified")
+            
             local expd = true
             
             if not var[3] then
@@ -5776,14 +6084,12 @@ local function groupfireAtPoint(var)
                 }
             } 
 
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", groupfireAtPoint variables set"))
-            end	
+            AIEN.loggers.get(AIEN.Id):trace("groupfireAtPoint variables set")
+            
 
             gController:pushTask(_task)
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", groupfireAtPoint fire mission planned"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("groupfireAtPoint fire mission planned")
+            
             
             -- message feedback
             if AIEN.config.message_feed == true then
@@ -5835,10 +6141,10 @@ local function groupfireAtPoint(var)
 
 
         else
-            env.info((tostring(ModuleName) .. ", groupfireAtPoint, missing controller or for: " .. tostring(group:getName())))
+            AIEN.loggers.get(AIEN.Id):info("groupfireAtPoint, missing controller or for: %s", group and group:getName())
         end	
     else
-        env.info((tostring(ModuleName) .. ", groupfireAtPoint, missing group"))        
+        AIEN.loggers.get(AIEN.Id):info("groupfireAtPoint, missing group")
     end
 end
 
@@ -5857,19 +6163,19 @@ local function checkValidTerrainSurface(vec3)
                         return false, l
                     end
                 else
-                    env.info((tostring(ModuleName) .. ", checkValidDestination: l not identified!"))
+                    AIEN.loggers.get(AIEN.Id):info("checkValidDestination: l not identified!")
                     return false
                 end
             else
-                env.info((tostring(ModuleName) .. ", checkValidDestination: wrong vector format"))
+                AIEN.loggers.get(AIEN.Id):info("checkValidDestination: wrong vector format")
                 return false
             end
         else
-            env.info((tostring(ModuleName) .. ", checkValidDestination: wrong variable"))
+            AIEN.loggers.get(AIEN.Id):info("checkValidDestination: wrong variable")
             return false
         end
     else
-        env.info((tostring(ModuleName) .. ", checkValidDestination: missing variable"))
+        AIEN.loggers.get(AIEN.Id):info("checkValidDestination: missing variable")
         return false
     end
 end
@@ -5937,16 +6243,14 @@ local function groupRoadOnly(group)
         local units = group:getUnits()
         for _, uData in pairs(units) do
             if uData:hasAttribute("Trucks") or uData:hasAttribute("Cars") or uData:hasAttribute("Unarmed vehicles") then
-                if AIEN.config.AIEN_debugProcessDetail then
-                    env.info(("AIEN.groupRoadOnly found at least one road only unit!"))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("AIEN.groupRoadOnly found at least one road only unit!")
+                
                 return true
             end
         end
     end
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info(("AIEN.groupRoadOnly no road only unit found, or no group"))
-    end
+    AIEN.loggers.get(AIEN.Id):trace("AIEN.groupRoadOnly no road only unit found, or no group")
+    
     
     return false
 end
@@ -5973,18 +6277,18 @@ end
 
 local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, reqUseRoad, formation, haltContact, issuedByClient, clientCoa, groupSpeed) -- move the group to a point or, if the point is missing, to a random position at about 2 km
     
-    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination x = " .. tostring(Vec3destination.x)))
-    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination y = " .. tostring(Vec3destination.y)))
-    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination z = " .. tostring(Vec3destination.z)))
+    AIEN.loggers.get(AIEN.Id):trace("moveToPoint Vec3destination x = %s", Vec3destination.x)
+    AIEN.loggers.get(AIEN.Id):trace("moveToPoint Vec3destination y = %s", Vec3destination.y)
+    AIEN.loggers.get(AIEN.Id):trace("moveToPoint Vec3destination z = %s", Vec3destination.z)
     if Vec3destination then
         local vt, vv = checkValidTerrainSurface(Vec3destination) 
         if vt == false then
             local newX, newZ = land.getClosestPointOnRoads('roads', Vec3destination.x, Vec3destination.z)
             local newY = land.getHeight({x = newX, y = newZ})
             Vec3destination = {x = newX, y = newY, z = newZ}
-            env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination corrected for land, was type " .. tostring(vv)))
+            AIEN.loggers.get(AIEN.Id):trace("moveToPoint Vec3destination corrected for land, was type %s", vv)
         else
-            env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination is identified as land, type " .. tostring(vv)))
+            AIEN.loggers.get(AIEN.Id):trace("moveToPoint Vec3destination is identified as land, type %s", vv)
         end
     end
     
@@ -6127,21 +6431,20 @@ local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, 
 
                         if issuedByClient == true and clientCoa then
                             trigger.action.outTextForCoalition(clientCoa, msg, 30)
-                            if AIEN.config.AIEN_debugProcessDetail then
-                                env.info(("AIEN.moveToPoint msg " .. tostring(msg)))
-                            end                        
+                            AIEN.loggers.get(AIEN.Id):trace("AIEN.moveToPoint msg %s", msg)
+                            
                         end                     
 
                         return
                     end
                 else
-                    env.info((tostring(ModuleName) .. ", moveToPoint failed, no valid coord available"))
+                    AIEN.loggers.get(AIEN.Id):info("moveToPoint failed, no valid coord available")
                 end
             else
-                env.info((tostring(ModuleName) .. ", moveToPoint failed, no valid destination available"))
+                AIEN.loggers.get(AIEN.Id):info("moveToPoint failed, no valid destination available")
             end
         else
-            env.info((tostring(ModuleName) .. ", moveToPoint failed, unit1 not available"))
+            AIEN.loggers.get(AIEN.Id):info("moveToPoint failed, unit1 not available")
         end
     end
 end
@@ -6174,9 +6477,8 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                                     og.taskTime = timer.getTime()
                                     og.firePoint = tgtPos
                                     
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info((tostring(ModuleName) .. ", counterBattery artillery potentially available"))
-                                    end
+                                    AIEN.loggers.get(AIEN.Id):trace("counterBattery artillery potentially available")
+                                    
                                     arty = og.group
                                     break
                                 end
@@ -6247,44 +6549,38 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                                 timer.scheduleFunction(func, nil, timer.getTime() + t)
 
                             else
-                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                    env.info((tostring(ModuleName) .. ", counterBattery failed fpos calculation"))
-                                end
+                                AIEN.loggers.get(AIEN.Id):trace("counterBattery failed fpos calculation")
+                                
                                 return false
                             end
 
                         else
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info((tostring(ModuleName) .. ", counterBattery f=" .. tostring(f) .. ", r=" .. tostring(r) .. " failed"))
-                            end
+                            AIEN.loggers.get(AIEN.Id):trace("counterBattery f=%s, r=%s failed", f, r)
+                            
                             return false
                         end
 
                     end
 
                 else
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info((tostring(ModuleName) .. ", counterBattery artillery not available"))
-                    end
+                    AIEN.loggers.get(AIEN.Id):trace("counterBattery artillery not available")
+                    
                     return false
                 end
             else
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info((tostring(ModuleName) .. ", counterBattery variable x and z missing"))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("counterBattery variable x and z missing")
+                
                 return false
             end
         else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", counterBattery variables wrong format"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("counterBattery variables wrong format")
+            
             return false
         end
 
     else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return false due to missing variable"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_fireMissionOnShooter return false due to missing variable")
+        
         return false
     end        
 
@@ -6408,15 +6704,13 @@ local function orderInfantryToMoveToPoint(_group, _destination)
     end
     world.searchObjects(Object.Category.SCENERY, volS, _search)     
     
-    if AIEN.config.AIEN_debugProcessDetail == true then
-        env.info(("AIEN.orderInfantryToMoveToPoint buildings _count = " .. tostring(_count)))
-    end	
+    AIEN.loggers.get(AIEN.Id):trace("AIEN.orderInfantryToMoveToPoint buildings _count = %s", _count)
+    
 
     if _count > 5 then
         routing = 'on_road'
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN.orderInfantryToMoveToPoint buildings identified, moving on road"))
-        end	
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.orderInfantryToMoveToPoint buildings identified, moving on road")
+        
     end
 
     local _dTbl
@@ -6525,9 +6819,8 @@ local function deployTroops(unit, exactPos)
                     end
 
                     mountedDb[unit:getID()] = nil
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info(("AIEN.deployTroops units deployed for unit " .. tostring(unit:getName())))
-                    end	
+                    AIEN.loggers.get(AIEN.Id):trace("AIEN.deployTroops units deployed for unit %s", unit and unit:getName())
+                    
                 end
                 return _spawnedGroup
             end
@@ -6625,23 +6918,20 @@ local function extractTroops(unit)
                         local loadedGroups = mountedDb[unit:getID()] or {}
                         loadedGroups[#loadedGroups+1] = typ
                         mountedDb[unit:getID()] = loadedGroups
-                        if AIEN.config.AIEN_debugProcessDetail == true then
-                            env.info(("AIEN.groupExtractTroop unit " .. tostring(unit:getName()) ..  ", extracted " .. tostring(gtbl:getName()) .. ", people: " .. tostring(people) ))
-                        end	
+                        AIEN.loggers.get(AIEN.Id):trace("AIEN.groupExtractTroop unit %s, extracted %s, people: %s", unit and unit:getName(), gtbl and gtbl:getName(), people)
+                        
                         done[gtbl:getID()] = true
                         gtbl:destroy()
                     else
-                        if AIEN.config.AIEN_debugProcessDetail == true then
-                            env.info(("AIEN.groupExtractTroop extraction found anything" ))
-                        end	
+                        AIEN.loggers.get(AIEN.Id):trace("AIEN.groupExtractTroop extraction found anything" )
+                        
                         foundAnything = false
                     end
                 end
 
                 while people >= 4 and foundAnything == true do
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info(("AIEN.groupExtractTroop unit " .. tostring(unit:getName()) ..  ", launching loadTeam, people " .. tostring(people) ))
-                    end	
+                    AIEN.loggers.get(AIEN.Id):trace("AIEN.groupExtractTroop unit %s, launching loadTeam, people %s", unit and unit:getName(), people)
+                    
                     loadTeam()
                 end
 
@@ -6662,9 +6952,8 @@ local function groupExtractTroop(group)
         local units = group:getUnits()
         for _, uData in pairs(units) do
             if mountedDb[uData:getID()] == nil then
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info(("AIEN.groupExtractTroop units extracting troops " .. tostring(uData:getName())))
-                end	
+                AIEN.loggers.get(AIEN.Id):trace("AIEN.groupExtractTroop units extracting troops %s", uData and uData:getName())
+                
                 extractTroops(uData)
             end
         end
@@ -6701,9 +6990,8 @@ local function mountTeam(unit)
 	local groupMoving = 0
 	local ifFound = function(foundItem, val)
 		if contains(foundItem:getName(), uName) then
-			if AIEN.config.AIEN_debugProcessDetail then
-				env.info((tostring(ModuleName) .. ", groupMountTeam, " .. tostring(foundItem:getName()) .. " recognized for " .. tostring(uName)))
-			end	
+			AIEN.loggers.get(AIEN.Id):trace("groupMountTeam, %s recognized for %s", foundItem and foundItem:getName(), uName)
+			
 			local foundg = foundItem:getGroup()
 			if not commandIssued[foundg:getID()] then
 				if foundg and foundg:isExist() == true and #foundg:getUnits() > 0 then
@@ -6716,9 +7004,8 @@ local function mountTeam(unit)
 	end
 	world.searchObjects(Object.Category.UNIT, volS, ifFound)
 
-	if AIEN.config.AIEN_debugProcessDetail then
-		env.info((tostring(ModuleName) .. ", groupMountTeam, " .. tostring(groupMoving) .. " groups have been ordered to move nearby " .. tostring(uName)))
-	end	
+	AIEN.loggers.get(AIEN.Id):trace("groupMountTeam, %s groups have been ordered to move nearby %s", groupMoving, uName)
+	
 
 	if groupMoving > 0 then
 		timer.scheduleFunction(extractTroops, unit, timer.getTime() + 600)
@@ -6767,17 +7054,15 @@ local function groupCheckForManpad(group)
 	if group and group:isExist() then
 		local unitsWithTroops = getTroops(group)
 		if unitsWithTroops and next(unitsWithTroops) ~= nil then
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN.groupCheckForManpad, unitsWithTroops available" ))
-            end	
+            AIEN.loggers.get(AIEN.Id):trace("AIEN.groupCheckForManpad, unitsWithTroops available")
+            
 			local manpadTeams = {}
 			for uId, uData in pairs(unitsWithTroops) do 
 				for _, teams in pairs(uData.t) do
 					for _, soldier in pairs(teams) do
 						if contains(soldier, "manpad") then
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info(("AIEN.groupCheckForManpad, has manpads" ))
-                            end	
+                            AIEN.loggers.get(AIEN.Id):trace("AIEN.groupCheckForManpad, has manpads")
+                            
 							manpadTeams[uId] = uData.u
 						end
 					end
@@ -6794,13 +7079,11 @@ end
 local function groupDeployManpad(group) -- this won't trigger the deploy of any kind of troops, but only for the manpad team (if there)
 	if group and group:isExist() then
 		local manpadTeams = groupCheckForManpad(group)
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN.groupDeployManpad, manpadTeams: " .. tostring(manpadTeams) ))
-        end	
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.groupDeployManpad, manpadTeams: %s", manpadTeams)
+        
 		if manpadTeams and next(manpadTeams) ~= nil then 
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN.groupDeployManpad, confirmed deployable manpads team" ))
-            end	
+            AIEN.loggers.get(AIEN.Id):trace("AIEN.groupDeployManpad, confirmed deployable manpads team")
+            
 			for _, manpads in pairs(manpadTeams) do
 				deployTroops(manpads)
                 timer.scheduleFunction(groupMountTeam, group, timer.getTime() + AIEN.config.remountTime)			
@@ -6837,9 +7120,8 @@ end
 
 local function ac_accelerate(group, ownPos, tgtPos, resume, sa, skill) -- self-explanatory
     -- doesn't stop a moving group, it simply set its speed as fast as possible. If the group is stationary, it does nothing
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_accelerate launched"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_accelerate launched", group and group:getName())
+    
     
     if group then
         local s, ms = getGroupSpeed(group)
@@ -6849,15 +7131,13 @@ local function ac_accelerate(group, ownPos, tgtPos, resume, sa, skill) -- self-e
                 c:setSpeed(30, true) -- 30 m/s = 108 km/h
                 return true
             else
-                if AIEN.config.AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", ac_accelerate controller not found"))
-                end    
+                AIEN.loggers.get(AIEN.Id):trace("ac_accelerate controller not found")
+                
                 return false
             end
         else
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", ac_accelerate failed to get speed, returning true assuming stationary"))
-            end  
+            AIEN.loggers.get(AIEN.Id):trace("ac_accelerate failed to get speed, returning true assuming stationary")
+            
             return true
         end
     end
@@ -6869,9 +7149,8 @@ local function ac_disperse(group, ownPos, tgtPos, resume, sa, skill) -- basicall
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_disperse launched, move randomly"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_disperse launched, move randomly", group and group:getName())
+    
     
     if group then
         groupAllowDisperse(group)
@@ -6886,9 +7165,7 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_panic launched, move randomly"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_panic launched, move randomly", group and group:getName())
     
     if group and group:isExist() and ownPos then
 
@@ -6901,9 +7178,8 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
                 local np = nil
                 local maxTries = 1000
                 while not np do
-                    if AIEN.config.AIEN_debugProcessDetail then
-                        env.info((tostring(ModuleName) .. ", ac_panic creating point..."))
-                    end
+                    AIEN.loggers.get(AIEN.Id):trace("ac_panic creating point...")
+                    
                     maxTries = maxTries - 1
                     if maxTries < 0 then
                         break
@@ -6928,9 +7204,8 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
         timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)    
         timer.scheduleFunction(funcSetParameters, nil, timer.getTime() + delay + 5)  
 
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_panic group planned reaction"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_panic group planned reaction")
+        
 
         return true
     end
@@ -6942,9 +7217,7 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_dropSmoke launched"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_dropSmoke launched", group and group:getName())
     
     if group and group:isExist() and ownPos and sa then
 
@@ -6961,9 +7234,8 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
             end
             if numTot > 0 then
                 if numSmk/numTot < 0.5 then
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info((tostring(ModuleName) .. ", ac_dropSmoke dropped cause less than 50% units can do that"))
-                    end
+                    AIEN.loggers.get(AIEN.Id):trace("ac_dropSmoke dropped cause less than 50% units can do that")
+                    
                     return false
                 end
             end
@@ -6994,9 +7266,8 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
                     
                             if points and #points > 0 then
                                 
-                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                    env.info((tostring(ModuleName) .. ", ac_dropSmoke points " .. tostring(#points)))
-                                end
+                                AIEN.loggers.get(AIEN.Id):trace("ac_dropSmoke points %s", #points)
+                                
 
                                 --phase 1 generate smoke
                                 for _, pPos in pairs(points) do
@@ -7010,9 +7281,8 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
                                 smoked = true
                     
                             else
-                                if AIEN.config.AIEN_debugProcessDetail then
-                                    env.info((tostring(ModuleName) .. ", ac_dropSmoke unable to define smoke points"))
-                                end  
+                                AIEN.loggers.get(AIEN.Id):trace("ac_dropSmoke unable to define smoke points")
+                                
                                 --return false
                             end   
                         end
@@ -7021,9 +7291,8 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
                 
                 if smoked == true then
                     moveToPoint(group, ownPos, 5, 14) 
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info((tostring(ModuleName) .. ", ac_dropSmoke group planned reaction"))
-                    end
+                    AIEN.loggers.get(AIEN.Id):trace("ac_dropSmoke group planned reaction")
+                    
                 end
             end
         end
@@ -7033,9 +7302,8 @@ local function ac_dropSmoke(group, ownPos, tgtPos, resume, sa, skill) -- basical
         return true  
         
     else
-        if AIEN.config.AIEN_debugProcessDetail then
-            env.info((tostring(ModuleName) .. ", ac_dropSmoke missing variables"))
-        end  
+        AIEN.loggers.get(AIEN.Id):trace("ac_dropSmoke missing variables")
+        
         return false
     end
 end
@@ -7045,9 +7313,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_withdraw launched, withdraw"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_withdraw launched, withdraw", group and group:getName())
     
     if group and ownPos then
         local bestPos = nil
@@ -7061,9 +7327,8 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
                         if p then -- and td
                             -- within range
                             local d = getDist(p, ownPos)
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info((tostring(ModuleName) .. ", ac_withdraw d " .. tostring(d)))
-                            end
+                            AIEN.loggers.get(AIEN.Id):trace("ac_withdraw d %s", d)
+                            
                             if d and d < maxDist and d > 2000 then
                                 bestPos = p
                                 maxDist = d
@@ -7081,9 +7346,8 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
                     moveToPoint(group, bestPos, AIEN.config.repositionDistance*1.5, AIEN.config.repositionDistance*0.5, false) 
                 end
             end
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_withdraw group planned reaction"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_withdraw group planned reaction")
+            
             local delay = getReactionTime(skill)
             timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
 
@@ -7107,24 +7371,21 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
                             moveToPoint(group, destination, 200, 10)
                         end
                     end
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info((tostring(ModuleName) .. ", ac_withdraw group planning coming back"))
-                    end
+                    AIEN.loggers.get(AIEN.Id):trace("ac_withdraw group planning coming back")
+                    
                     timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(600, 900))     
                 end
             end
 
             return true
         else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_withdraw return false due to missing widraw opportunities"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_withdraw return false due to missing widraw opportunities")
+            
             return false
         end
     else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_withdraw return false due to missing variable"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_withdraw return false due to missing variable")
+        
         return false
     end
 end
@@ -7134,9 +7395,7 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_attack launched, move toward enemy"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_attack launched, move toward enemy", group and group:getName())
     
     if group and tgtPos then
         local funcDoAction = function()
@@ -7152,9 +7411,8 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
                 moveToPoint(group, tgtPos, 300, 500, false, "cone", nil, nil, nil, speed) 
             end
         end
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_attack group planned reaction"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_attack group planned reaction")
+        
         local delay = getReactionTime(skill)
         timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
         groupGoShoot(group)
@@ -7178,18 +7436,16 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
                     moveToPoint(group, destination, 200, 10, false)
                 end
             end
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_attack group planning coming back"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_attack group planning coming back")
+            
             timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(900, 1200))     
         end
 
         return true
 
     else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_attack return false due to missing variable"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_attack return false due to missing variable")
+        
         return false
     end
 end
@@ -7199,9 +7455,7 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_coverBuildings launched"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_coverBuildings launched", group and group:getName())
     
     if group and ownPos and sa then
 
@@ -7250,14 +7504,12 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                     pcall(function()
                         if _obj ~= nil then
                             local o_coa = _obj:getCoalition()
-                            if AIEN.config.AIEN_debugProcessDetail then
-                                env.info((tostring(ModuleName) .. ", ac_coverBuildings o_coa: " .. tostring(o_coa)))
-                            end    
+                            AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings o_coa: %s", o_coa)
+                            
                             if o_coa  then
                                 if o_coa ~= gCoa then
-                                    if AIEN.config.AIEN_debugProcessDetail then
-                                        env.info((tostring(ModuleName) .. ", ac_coverBuildings enemies true! " .. tostring(enemies)))
-                                    end   
+                                    AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings enemies true! %s", enemies)
+                                    
                                     enemies = true
                                 end
                             end              
@@ -7265,41 +7517,34 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                     end)
                 end                
 
-                if AIEN.config.AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", ac_coverBuildings enemies: " .. tostring(enemies)))
-                end    
+                AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings enemies: %s", enemies)
+                
 
                 world.searchObjects(Object.Category.SCENERY, _volume, _searchB)	
                 world.searchObjects(Object.Category.UNIT,    _volume, _searchU)
 
                 if count > 3 and #tblPos > 3 and enemies == false then
-                    if AIEN.config.AIEN_debugProcessDetail then
-                        env.info((tostring(ModuleName) .. ", ac_coverBuildings adding point, count: " .. tostring(count)))
-                    end  
+                    AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings adding point, count: %s", count)
+                    
                     local bestPos = avgVec3(tblPos)
                     return count, bestPos
                 end
             end
 
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", ac_coverBuildings starting c1p1"))
-            end 
+            AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings starting c1p1")
+            
             local _, p1 = countBld(pos1)
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", ac_coverBuildings starting c2p2"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings starting c2p2")
+            
             local _, p2 = countBld(pos2)
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", ac_coverBuildings starting c3p3"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings starting c3p3")
+            
             local _, p3 = countBld(pos3)
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", ac_coverBuildings starting c4p4"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings starting c4p4")
+            
             local _, p4 = countBld(pos4)
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", ac_coverBuildings done all P's"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings done all P's")
+            
 
             if p1 or p2 or p3 or p4 then -- at least one should exist
             local function findNearestPoint(p0, ...)
@@ -7327,9 +7572,8 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                             moveToPoint(group, dest, AIEN.config.repositionDistance, AIEN.config.repositionDistance*0.2) 
                         end
                     end
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info((tostring(ModuleName) .. ", ac_coverBuildings group planned reaction"))
-                    end
+                    AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings group planned reaction")
+                    
                     local delay = getReactionTime(skill)
                     timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)    
                     
@@ -7349,9 +7593,8 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
                         end            
                         local funcresumeRoute = function()
                             if group:isExist() then
-                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                    env.info((tostring(ModuleName) .. ", ac_coverBuildings group planning coming back to original destination"))
-                                end
+                                AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings group planning coming back to original destination")
+                                
                                 moveToPoint(group, destination, 200, 10)
                             end
                         end
@@ -7360,27 +7603,23 @@ local function ac_coverBuildings(group, ownPos, tgtPos, resume, sa, skill) -- th
 
                     return true
                 else
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info((tostring(ModuleName) .. ", ac_coverBuildings return false due to missing buildings area"))
-                    end
+                    AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings return false due to missing buildings area")
+                    
                     return false
                 end                    
             else
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info((tostring(ModuleName) .. ", ac_coverBuildings didn't found a suitable place"))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings didn't found a suitable place")
+                
                 return false
             end
         else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_coverBuildings return false due wrong math around the starting point"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings return false due wrong math around the starting point")
+            
             return false
         end
     else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_coverBuildings return false due to missing variable"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_coverBuildings return false due to missing variable")
+        
         return false
     end
 end
@@ -7390,9 +7629,7 @@ local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) -- thi
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_groundSupport launched, move randomly"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_groundSupport launched, move randomly", group and group:getName())
     
     if group and ownPos and sa then
         local bestVal = 0
@@ -7424,23 +7661,20 @@ local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) -- thi
                     moveToPoint(AllyGroup, ownPos, bestTd*0.5, bestTd*0.3) 
                 end
             end
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_groundSupport group planned reaction"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_groundSupport group planned reaction")
+            
             local delay = getReactionTime(skill)
             timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
  
             return true
         else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_groundSupport return false due to missing widraw opportunities"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_groundSupport return false due to missing widraw opportunities")
+            
             return false
         end
     else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_groundSupport return false due to missing variable"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_groundSupport return false due to missing variable")
+        
         return false
     end
 end
@@ -7450,9 +7684,7 @@ local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) -- this wil
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_coverADS launched"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_coverADS launched", group and group:getName())
     
     if group and ownPos and sa then
         local bestPos = nil
@@ -7484,9 +7716,8 @@ local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) -- this wil
                     moveToPoint(group, bestPos, bestTd*0.3, bestTd*0.05) 
                 end
             end
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_coverADS group planned reaction"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_coverADS group planned reaction")
+            
             local delay = getReactionTime(skill)
             timer.scheduleFunction(funcDoAction, nil, timer.getTime() + delay)      
 
@@ -7509,23 +7740,20 @@ local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) -- this wil
                         moveToPoint(group, destination, 200, 10)
                     end
                 end
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info((tostring(ModuleName) .. ", ac_coverADS group planning coming back"))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("ac_coverADS group planning coming back")
+                
                 timer.scheduleFunction(funcresumeRoute, nil, timer.getTime() + aie_random(900, 1200))     
             end
  
             return true
         else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info((tostring(ModuleName) .. ", ac_coverADS return false due to missing widraw opportunities"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("ac_coverADS return false due to missing widraw opportunities")
+            
             return false
         end
     else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_coverADS return false due to missing variable"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_coverADS return false due to missing variable")
+        
         return false
     end
 end
@@ -7535,9 +7763,7 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
     -- sa is the SA table passed from the group DB, which hold some useful information for addressing the action 
-    if AIEN.config.AIEN_debugProcessDetail then
-        env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter launched, planning"))
-    end    
+    AIEN.loggers.get(AIEN.Id):debug("%s - ac_fireMissionOnShooter launched, planning", group and group:getName())
     
     if tgtPos then
         for _, og in pairs(groundgroupsDb) do
@@ -7550,9 +7776,8 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
                             og.taskTime = timer.getTime()
                             og.firePoint = tgtPos
                             groupfireAtPoint({og.group, tgtPos, 20, "Immediate suppression"})
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return true, planning the fire mission"))
-                            end
+                            AIEN.loggers.get(AIEN.Id):trace("ac_fireMissionOnShooter return true, planning the fire mission")
+                            
 
                             return true
                        end
@@ -7560,14 +7785,12 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
                 end
             end
         end
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return false being unable to plan the fire mission"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_fireMissionOnShooter return false being unable to plan the fire mission")
+        
         return false
     else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return false due to missing variable"))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("ac_fireMissionOnShooter return false due to missing variable")
+        
         return false
     end
 end
@@ -8320,9 +8543,8 @@ local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
 
                             trigger.action.groupContinueMoving(gr)
                             local success = f(gr, ownPos, tgtPos, dbActData.resume, saTbl, skill)
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info(("AIEN.executeActions, action success = " .. tostring(success)))
-                            end
+                            AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions, action success = %s", success)
+                            
                             if success and success == true then
                                 -- message feedback
                                 if AIEN.config.message_feed == true then
@@ -8351,21 +8573,18 @@ local function executeActions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
                 end
             end
         else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN.executeActions, actTbl missing or void"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions, actTbl missing or void")
+            
             return false
         end
     else
-        if AIEN.config.AIEN_debugProcessDetail == true then
-            env.info(("AIEN.executeActions error, missing one or more variables:"))
-            env.info(("AIEN.executeActions error: " .. tostring(gr)))
-            env.info(("AIEN.executeActions error: " .. tostring(ownPos)))
-            env.info(("AIEN.executeActions error: " .. tostring(tgtPos)))
-            env.info(("AIEN.executeActions error: " .. tostring(actTbl)))
-            env.info(("AIEN.executeActions error: " .. tostring(saTbl)))
-            env.info(("AIEN.executeActions error: " .. tostring(skill)))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions error, missing one or more variables:")
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions error: %s", gr)
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions error: %s", ownPos)
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions error: %s", tgtPos)
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions error: %s", actTbl)
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions error: %s", saTbl)
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.executeActions error: %s", skill)
         return false
     end
 end
@@ -8439,9 +8658,8 @@ function AIEN_testActions(groupName, actionName)
 			
 			-- tgtPos might be unnecessary, therefore I don't check it.
 			local success = actionFunc(gr, ownPos, tgtPos, actionResume, saTbl, skill)
-			if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN.AIEN_testActions, result " .. tostring(success)))
-            end
+			AIEN.loggers.get(AIEN.Id):trace("AIEN.AIEN_testActions, result %s", success)
+            
 			if success and success == true then
 				-- message feedback
 				if AIEN.config.message_feed == true then
@@ -8510,14 +8728,14 @@ local function populate_Db() -- this one is launched once at mission start and c
                 -- UNKN
                 
                 local s = getGroupSkillNum(gp)
-                env.info((tostring(ModuleName) .. ", populate_Db: s " .. tostring(s)))
+                AIEN.loggers.get(AIEN.Id):info("populate_Db: s %s", s)
                 local det, thr = getRanges(gp)
                 if c then
                     --local r = getMEroute(gp)
                     groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gpcoa, detection = det, threat = thr, tasked = false, skill = s}  --, route = r
-                    env.info((tostring(ModuleName) .. ", populate_Db: adding to groundgroupsDb " .. tostring(gp:getName() .. ", class " .. tostring(c) )))
+                    AIEN.loggers.get(AIEN.Id):info("populate_Db: adding to groundgroupsDb %s, class %s", gp and gp:getName(), c)
                 else
-                    env.info((tostring(ModuleName) .. ", populate_Db: skipping group due to unable to identify class " .. tostring(gp:getName() )))
+                    AIEN.loggers.get(AIEN.Id):info("populate_Db: skipping group due to unable to identify class %s", gp and gp:getName())
                 end
 
                 -- dismount dbs
@@ -8538,7 +8756,7 @@ local function populate_Db() -- this one is launched once at mission start and c
 
 
                                     local r = aie_random(1,100)
-                                    --env.info((tostring(ModuleName) .. ", populate_Db: random for " .. tostring(unit:getName()) .. ": " .. tostring(r) ))
+                                    --AIEN.loggers.get(AIEN.Id):info("populate_Db: random for %s: %s", unit and unit:getName(), r)
                                     local c = nil
                                     local i = nil
                                     local lim = 0
@@ -8547,13 +8765,13 @@ local function populate_Db() -- this one is launched once at mission start and c
                                             c = tData.c
                                             i = tData.id
                                             lim = tData.p
-                                            --env.info((tostring(ModuleName) .. ", populate_Db: found " .. tostring(i) ))
+                                            --AIEN.loggers.get(AIEN.Id):info("populate_Db: found %s", i)
                                         end
                                     end
 
                                     if c then
                                         local curMount = mountedDb[unit:getID()] or {}
-                                        env.info((tostring(ModuleName) .. ", populate_Db: adding " .. tostring(i) .. " to " .. tostring(unit:getName()) ))
+                                        AIEN.loggers.get(AIEN.Id):info("populate_Db: adding %s to %s", i, unit and unit:getName())
                                         curMount[#curMount+1] = c
                                         mountedDb[unit:getID()] = curMount
                                         
@@ -8596,7 +8814,7 @@ local function populate_Db() -- this one is launched once at mission start and c
                     end
                 end
                 if c then
-                    env.info((tostring(ModuleName) .. ", populate_Db: adding to droneunitDb " .. tostring(gp:getName() )))
+                    AIEN.loggers.get(AIEN.Id):info("populate_Db: adding to droneunitDb %s", gp and gp:getName())
                     droneunitDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition()}
                 end				
 			end
@@ -8657,9 +8875,8 @@ local function update_GROUND()
                 if AIEN.config.AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
                     dumpTableAIEN("groundgroupsDb.lua", groundgroupsDb, "int")
                 end
-                if AIEN.config.AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", update_GROUND: phase A completed"))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("update_GROUND: phase A completed")
+                
 
             else
                 local gData = groundgroupsDb[phase_index]
@@ -8677,9 +8894,8 @@ local function update_GROUND()
                                 -- check tasked
                                 if gData.tasked == true and gData.taskTime then
                                     if timer.getTime() - gData.taskTime >= AIEN.config.taskTimeout then
-                                        if AIEN.config.AIEN_debugProcessDetail then
-                                            env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " is still tasked. Removing it"))
-                                        end
+                                        AIEN.loggers.get(AIEN.Id):trace("update_GROUND, group name %s is still tasked. Removing it", gData.n)
+                                        
                                         gData.tasked = false
                                         gData.taskTime = nil
                                     end
@@ -8688,33 +8904,28 @@ local function update_GROUND()
                                 local t = timer.getTime() - underAttack[phase_index]
                                 if t > AIEN.config.taskTimeout*2 then
                                     underAttack[phase_index] = nil
-                                    if AIEN.config.AIEN_debugProcessDetail then
-                                        env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " removed from the under attack table"))
-                                    end
+                                    AIEN.loggers.get(AIEN.Id):trace("update_GROUND, group name %s removed from the under attack table", gData.n)
+                                    
                                 else
-                                    if AIEN.config.AIEN_debugProcessDetail then
-                                        env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " is still under attack"))
-                                    end                                        
+                                    AIEN.loggers.get(AIEN.Id):trace("update_GROUND, group name %s is still under attack", gData.n)
+                                    
                                 end
                             end
 
                         else
-                            if AIEN.config.AIEN_debugProcessDetail then
-                                env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " other variables does not exist, remove true"))
-                            end
+                            AIEN.loggers.get(AIEN.Id):trace("update_GROUND, group name %s other variables does not exist, remove true", gData.n)
+                            
                             remove = true
                         end
                     else
-                        if AIEN.config.AIEN_debugProcessDetail then
-                            env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " gData.group does not exist, remove true"))
-                        end
+                        AIEN.loggers.get(AIEN.Id):trace("update_GROUND, group name %s gData.group does not exist, remove true", gData.n)
+                        
                         remove = true
                     end
 
                     if remove == true then
-                        if AIEN.config.AIEN_debugProcessDetail then
-                            env.info((tostring(ModuleName) .. ", update_GROUND, group name " .. tostring(gData.n) .. " missing. Removing it"))
-                        end
+                        AIEN.loggers.get(AIEN.Id):trace("update_GROUND, group name %s missing. Removing it", gData.n)
+                        
                         groundgroupsDb[phase_index] = nil
                         phase_keys = createIterator(groundgroupsDb)                        
                     end
@@ -8725,9 +8936,8 @@ local function update_GROUND()
             end
         else
             PHASE = "Initialization"
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", update_GROUND, reinizializzazione dei DB, poiché groundgroupsDb sembra vuoto o inesistente!"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("update_GROUND, reinizializzazione dei DB, poiché groundgroupsDb sembra vuoto o inesistente!")
+            
             timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
         end
     end
@@ -8745,27 +8955,24 @@ local function update_ISR() -- basically clean old ISR data
                 if AIEN.config.AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
                     dumpTableAIEN("intelDb.lua", intelDb, "int")
                 end
-                if AIEN.config.AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", update_ISR: fase B completed"))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("update_ISR: fase B completed")
+                
 
             else
                 local tData = intelDb[phase_index]
                 if tData then
                     --local remove = false
                     if not tData.obj or tData.obj:isExist() == false then
-                        if AIEN.config.AIEN_debugProcessDetail then
-                            env.info((tostring(ModuleName) .. ", update_ISR, target id " .. tostring(phase_index) .. " missing. Removing it"))
-                        end
+                        AIEN.loggers.get(AIEN.Id):trace("update_ISR, target id %s missing. Removing it", phase_index)
+                        
                         intelDb[phase_index] = nil
                         phase_keys = createIterator(intelDb) 
                     else
                         if tData.targeted then
                             if type(tData.targeted) == "number" then
                                 if timer.getTime() - tData.targeted >= AIEN.config.targetedTimeout then
-                                    if AIEN.config.AIEN_debugProcessDetail then
-                                        env.info((tostring(ModuleName) .. ", update_ISR, target id " .. tostring(phase_index) .. " is still targeted. Removing it"))
-                                    end
+                                    AIEN.loggers.get(AIEN.Id):trace("update_ISR, target id %s is still targeted. Removing it", phase_index)
+                                    
                                     intelDb[phase_index].targeted = nil
                                 end
                             end
@@ -8782,9 +8989,8 @@ local function update_ISR() -- basically clean old ISR data
             if AIEN.config.AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
                 dumpTableAIEN("intelDb.lua", intelDb, "int")
             end
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", update_ISR: fase B skipped"))
-            end            
+            AIEN.loggers.get(AIEN.Id):trace("update_ISR: fase B skipped")
+            
         end
     end
 end
@@ -8800,9 +9006,8 @@ local function update_DRONE()
                 if AIEN.config.AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
                     dumpTableAIEN("droneunitDb.lua", droneunitDb, "int")
                 end
-                if AIEN.config.AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", update_DRONE: fase B completata"))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("update_DRONE: fase B completata")
+                
 
             else
                 local dData = droneunitDb[phase_index]
@@ -8811,9 +9016,8 @@ local function update_DRONE()
                     if dData.group then
                         if dData.group and dData.group:isExist() == true then
                             -- update/create sa
-                            if AIEN.config.AIEN_debugProcessDetail then
-                                env.info((tostring(ModuleName) .. ", update_DRONE, add SA " .. tostring(dData.n)))
-                            end
+                            AIEN.loggers.get(AIEN.Id):trace("update_DRONE, add SA %s", dData.n)
+                            
                             dData.sa = getSA(dData.group)
                         else
                             remove = true
@@ -8823,9 +9027,8 @@ local function update_DRONE()
                     end
 
                     if remove == true then
-                        if AIEN.config.AIEN_debugProcessDetail then
-                            env.info((tostring(ModuleName) .. ", update_DRONE, group name " .. tostring(dData.n) .. " missing. Removing it"))
-                        end
+                        AIEN.loggers.get(AIEN.Id):trace("update_DRONE, group name %s missing. Removing it", dData.n)
+                        
                         droneunitDb[phase_index] = nil
                         phase_keys = createIterator(droneunitDb)                        
                     end
@@ -8835,14 +9038,12 @@ local function update_DRONE()
                 timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
             end
         else
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", update_DRONE, no drone available!"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("update_DRONE, no drone available!")
+            
             AIEN.changePhase()
             timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", update_DRONE: fase B completata"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("update_DRONE: fase B completata")
+            
         end
     end
 
@@ -8855,9 +9056,8 @@ local function update_ARTY()
             if not phase_index or AIEN.config.firemissions == false then -- escape condition from the 2nd loop!
                 AIEN.changePhase()
                 timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
-                if AIEN.config.AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", update_ARTY: phase D completed or skipped"))
-                end
+                AIEN.loggers.get(AIEN.Id):trace("update_ARTY: phase D completed or skipped")
+                
             else
                 if not underAttack[phase_index] then 
                     local gData = groundgroupsDb[phase_index]
@@ -8938,9 +9138,8 @@ local function update_ARTY()
                                                                                 targetId = report.cls
                                                                                 report.targeted = timer.getTime()
                                                                             else
-                                                                                if AIEN.config.AIEN_debugProcessDetail then
-                                                                                    env.info((tostring(ModuleName) .. ", update_ARTY, target skipped for danger close"))
-                                                                                end
+                                                                                AIEN.loggers.get(AIEN.Id):trace("update_ARTY, target skipped for danger close")
+                                                                                
                                                                             end
                                                                         end
                                                                     end
@@ -8952,9 +9151,8 @@ local function update_ARTY()
                                                     
                                                     -- issuing mission
                                                     if firePoint then
-                                                        if AIEN.config.AIEN_debugProcessDetail then
-                                                            env.info((tostring(ModuleName) .. ", update_ARTY, suitable target found for : " .. tostring(gData.n) .. ": " .. tostring(targetId) .. ", will fire " .. tostring(roundsToFire) .. " rounds"))
-                                                        end
+                                                        AIEN.loggers.get(AIEN.Id):trace("update_ARTY, suitable target found for : %s: %s, will fire %s rounds", gData.n, targetId, roundsToFire)
+                                                        
                                                         gData.tasked = true
                                                         gData.taskTime = timer.getTime()
                                                         gData.firePoint = firePoint
@@ -8968,9 +9166,8 @@ local function update_ARTY()
                                                 end
 
                                             else
-                                                if AIEN.config.AIEN_debugProcessDetail then
-                                                    env.info((tostring(ModuleName) .. ", update_ARTY, threat range not available"))
-                                                end
+                                                AIEN.loggers.get(AIEN.Id):trace("update_ARTY, threat range not available")
+                                                
                                             end
                                         end
                                     end
@@ -8983,9 +9180,8 @@ local function update_ARTY()
                         end
 
                         if remove == true then
-                            if AIEN.config.AIEN_debugProcessDetail then
-                                env.info((tostring(ModuleName) .. ", update_ARTY, group name " .. tostring(gData.n) .. " missing. Removing it"))
-                            end
+                            AIEN.loggers.get(AIEN.Id):trace("update_ARTY, group name %s missing. Removing it", gData.n)
+                            
                             groundgroupsDb[phase_index] = nil
                             phase_keys = createIterator(groundgroupsDb)                        
                         end
@@ -8997,9 +9193,8 @@ local function update_ARTY()
             end
         else
             PHASE = "Initialization"
-            if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", update_ARTY, reinizializzazione dei DB, poiché groundgroupsDb sembra vuoto o inesistente!"))
-            end
+            AIEN.loggers.get(AIEN.Id):trace("update_ARTY, reinizializzazione dei DB, poiché groundgroupsDb sembra vuoto o inesistente!")
+            
             timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
         end
     end
@@ -9010,36 +9205,32 @@ end
 function AIEN.changePhase()
     if PHASE == "Initialization" then -- udpate terrain data
         PHASE = "A"
-        if AIEN.config.AIEN_debugProcessDetail then
-            env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
-        end    
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.changePhase, new PHASE: %s", PHASE)
+        
 
     elseif PHASE == "A" then -- udpate terrain data
         PHASE = "B"
         phase_keys = nil
         phase_keys = createIterator(intelDb) -- focus phase_keys on groundgroupsDb
         phase_index = phase_keys[1]
-        if AIEN.config.AIEN_debugProcessDetail then
-            env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.changePhase, new PHASE: %s", PHASE)
+        
 
     elseif PHASE == "B" then
         PHASE = "C"
         phase_keys = nil
         phase_keys = createIterator(droneunitDb) -- focus phase_keys on groundgroupsDb
         phase_index = phase_keys[1]
-        if AIEN.config.AIEN_debugProcessDetail then
-            env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.changePhase, new PHASE: %s", PHASE)
+        
 
     elseif PHASE == "C" then
         PHASE = "D"
         phase_keys = nil
         phase_keys = createIterator(groundgroupsDb) -- focus phase_keys on groundgroupsDb
         phase_index = phase_keys[1]
-        if AIEN.config.AIEN_debugProcessDetail then
-            env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
-        end        
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.changePhase, new PHASE: %s", PHASE)
+        
     
     elseif PHASE == "D" then
         PHASE = "Z" -- LAST STEP
@@ -9050,9 +9241,8 @@ function AIEN.changePhase()
         phase_keys = nil
         phase_keys = createIterator(groundgroupsDb) -- focus phase_keys on groundgroupsDb
         phase_index = phase_keys[1]
-        if AIEN.config.AIEN_debugProcessDetail then
-            env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
-        end
+        AIEN.loggers.get(AIEN.Id):trace("AIEN.changePhase, new PHASE: %s", PHASE)
+        
 
 
     end
@@ -9121,16 +9311,14 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                         AI_consent = false
                     end  
 
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info(("AIEN.event_hit, S_EVENT_HIT, coalition check return AI_consent " .. tostring(AI_consent) ))
-                    end	
+                    AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, coalition check return AI_consent %s", AI_consent)
+                    
 
                     if AI_consent == true then
                         if AIEN.config.AIEN_zoneFilter and AIEN.config.AIEN_zoneFilter ~= "" then
                             AI_consent = groupInZone(group)
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info(("AIEN.event_hit, S_EVENT_HIT, group zone check return AI_consent " .. tostring(AI_consent) ))
-                            end	
+                            AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group zone check return AI_consent %s", AI_consent)
+                            
                         end
                     end
                     
@@ -9145,9 +9333,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                 suppressEffects = true
                             end
                             if suppressEffects == true then
-                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group is suppressed: " .. tostring(group:getName()) ))
-                                end		
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group is suppressed: %s", group and group:getName())
+                                
                                 groupSuppress(group)
                             end
                         end
@@ -9157,17 +9344,15 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                             if not underAttack[group:getID()] then
                                 if shooter:hasAttribute("Air") then
                                     timer.scheduleFunction(groupDeployManpad, group, timer.getTime() + aie_random(8, 15))
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, shooter is airborne, manpad dismount happens"))
-                                    end	 
+                                    AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, shooter is airborne, manpad dismount happens")
+                                    
                                 elseif shooter:hasAttribute("Ground Units") then
                                     local d = AIEN.config.infantrySearchDist
                                     local dist = getDist(shooter:getPoint(), position)
                                     if dist < d then
                                         timer.scheduleFunction(groupDeployTroop, group, timer.getTime() + aie_random(8, 15))
-                                        if AIEN.config.AIEN_debugProcessDetail == true then
-                                            env.info(("AIEN.event_hit, S_EVENT_HIT, distance is close, infantry dismount happens"))
-                                        end	    
+                                        AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, distance is close, infantry dismount happens")
+                                        
                                     end                            
                                 end
                             end
@@ -9177,9 +9362,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                         local choosenAct = nil
                         if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
                             
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) ))
-                            end					
+                            AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s", group and group:getName())
+                            
 
                             -- retrieve SA & Controller
                             local con = group:getController()
@@ -9207,15 +9391,13 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                         ROCKET    2
                                         BOMB      3
                                     --]]--
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", w_cat: " .. tostring(w_cat) ))
-                                    end								
+                                    AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, w_cat: %s", group and group:getName(), w_cat)
+                                    
                                 end
 
                                 if shooter and con then
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, shooter known"))
-                                    end	
+                                    AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, shooter known")
+                                    
 
                                     -- revise a_pos
                                     a_pos = shooter:getPoint()
@@ -9273,9 +9455,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
 
 
                                 else -- try to address things when the shooter is unknown, based on weapon and effects
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown"))
-                                    end	 
+                                    AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, shooter unknown")
+                                    
 
                                     if w_cat then
                                         --[[-- 
@@ -9287,49 +9468,42 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                         --]]--
                                         if w_cat == 0 or w_cat == 2 then -- shooter is unknown, and the weapon is a shell or a rocket: artillery is possibile
                                             s_indirect = 1
-                                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                                env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but arty fire possibile"))
-                                            end	 
+                                            AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, shooter unknown but arty fire possibile")
+                                            
                                         elseif w_cat == 1 or w_cat == 3 then -- shooter is unknown, and the weapon is a missile or a bomb: airborne threat is possibile
                                             s_cls = "ARBN"
-                                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                                env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but airborne fire possibile"))
-                                            end	 
+                                            AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, shooter unknown but airborne fire possibile")
+                                            
                                         end
 
                                     end
                                 end
 
-                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", w_cat: " .. tostring(w_cat) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_cat: " .. tostring(s_cat) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_indirect: " .. tostring(s_indirect) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_close: " .. tostring(s_close) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_fireMis: " .. tostring(s_fireMis) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", o_cls: " .. tostring(o_cls) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_cls: " .. tostring(s_cls) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", a_pos: " .. tostring(a_pos) ))
-                                end	
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, w_cat: %s", group and group:getName(), w_cat)
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, s_cat: %s", group and group:getName(), s_cat)
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, s_indirect: %s", group and group:getName(), s_indirect)
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, s_close: %s", group and group:getName(), s_close)
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, s_fireMis: %s", group and group:getName(), s_fireMis)
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, o_cls: %s", group and group:getName(), o_cls)
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, s_cls: %s", group and group:getName(), s_cls)
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, group %s, a_pos: %s", group and group:getName(), a_pos)
 
                                 local av_ac = deepCopy(actionsDb) 
 
                                 -- remove not doable actions due to missin informations
                                 if s_fireMis < 1 or AI_consent == false then -- shooter position is not sufficiently recent
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, s_fireMis is 0, won't be able to call fire support"))
-                                    end	                                  
+                                    AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, s_fireMis is 0, won't be able to call fire support")
+                                    
                                     av_ac[9] = nil
                                 end 
                                 if not a_pos or not s_detected then -- enemy position unknown
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, enemy not detected, won't be able to move toward the enemy"))
-                                    end	                                  
+                                    AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, enemy not detected, won't be able to move toward the enemy")
+                                    
                                     av_ac[5] = nil
                                 end
                                 if s_cat == 0 or s_cat == 1 or s_cls == "ARBN" then -- shooter is airborne
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, shooter is airborne, removing less sensed decision"))
-                                    end	                                  
+                                    AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, shooter is airborne, removing less sensed decision")
+                                    
                                     av_ac[5] = nil -- remove attack
                                     av_ac[7] = nil -- remove ground support
                                     av_ac[3] = nil -- remove disperse
@@ -9352,9 +9526,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                         av_ac[aSk] = nil
                                     end
                                 end
-                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, available actions " .. tostring(#av_ac) ))
-                                end
+                                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, available actions %s", #av_ac)
+                                
                                 
                                 -- calculate points for each remaining actions
                                 local bc_ac = {}
@@ -9369,16 +9542,13 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                     local px7 = aData["s_cls"][s_cls] or 0
 
                                     points = px1 + px2 + px3 + px4 + px5 + px6 + px7 
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for w_cat: " .. tostring(aData["w_cat"][w_cat])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_cat: " .. tostring(aData["s_cat"][s_cat])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_indirect: " .. tostring(aData["s_indirect"][s_indirect])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_close: " .. tostring(aData["s_close"][s_close])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_fireMis: " .. tostring(aData["s_fireMis"][s_fireMis])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for o_cls: " .. tostring(aData["o_cls"][o_cls])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_cls: " .. tostring(aData["s_cls"][s_cls])))
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points total: " .. tostring(points)))
-                                    end	
+                                    --AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, %s, points for w_cat: %s", aData.name, aData["w_cat"][w_cat])
+                                    --AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, %s, points for s_cat: %s", aData.name, aData["s_cat"][s_cat])
+                                    --AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, %s, points for s_indirect: %s", aData.name, aData["s_indirect"][s_indirect])
+                                    --AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, %s, points for s_close: %s", aData.name, aData["s_close"][s_close])
+                                    --AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, %s, points for s_fireMis: %s", aData.name, aData["s_fireMis"][s_fireMis])
+                                    --AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, %s, points for o_cls: %s", aData.name, aData["o_cls"][o_cls])
+                                    --AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, %s, points for s_cls: %s", aData.name, aData["s_cls"][s_cls])
 
                                     bc_ac[#bc_ac+1] = {name = aData.name, action = aData.action, rank = points}
                                 end
@@ -9407,20 +9577,17 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                         end
 
                     else
-                        if AIEN.config.AIEN_debugProcessDetail == true then
-                            env.info(("AIEN.event_hit, S_EVENT_HIT, AI consent is false"))
-                        end	
+                        AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, S_EVENT_HIT, AI consent is false")
+                        
                     end
                 end
             else
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info(("AIEN.event_hit, missing unit"))
-                end	                
+                AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, missing unit")
+                
             end
         else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-                env.info(("AIEN.event_hit, either shooter or unit are not valid units"))
-            end	                
+            AIEN.loggers.get(AIEN.Id):trace("AIEN.event_hit, either shooter or unit are not valid units")
+            
         end
     end
 
@@ -9443,9 +9610,9 @@ local function event_birth(initiator)
                         local det, thr = getRanges(gp)
                         local s = getGroupSkillNum(gp)
                         groupPreventDisperse(gp)
-                        --env.info((tostring(ModuleName) .. ", event_birth: s " .. tostring(s)))
+                        --AIEN.loggers.get(AIEN.Id):info("event_birth: s %s", s)
                         groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition(), detection = det, threat = thr, tasked = false, skill = s}
-                        --env.info((tostring(ModuleName) .. ", event_birth: adding to groundgroupsDb " .. tostring(gp:getName() )))
+                        --AIEN.loggers.get(AIEN.Id):info("event_birth: adding to groundgroupsDb %s", gp and gp:getName())
                     end
                 end
             elseif objCat == 1 and subCat == 0 then -- unit, plane unit (drone)	
@@ -9460,9 +9627,8 @@ local function event_birth(initiator)
                         end
                     end
                     if c then
-                        if AIEN.config.AIEN_debugProcessDetail == true then
-                            env.info((tostring(ModuleName) .. ", event_birth: adding to droneunitDb " .. tostring(un:getName() )))
-                        end
+                        AIEN.loggers.get(AIEN.Id):trace("event_birth: adding to droneunitDb %s", un and un:getName())
+                        
                         
                         droneunitDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition()}
                     end                        					
@@ -9523,10 +9689,10 @@ world.addEventHandler(AIEN.eventHandler)
 
 --## INIT SCRIPT
 if AIEN.config.dontInitialize then
-	env.info((ModuleName .. ": Loaded (BUT NOT INITIALIZED) " .. MainVersion .. "." .. SubVersion .. "." .. Build .. ", released " .. Date))
+    AIEN.loggers.get(AIEN.Id):info("Loaded (BUT NOT INITIALIZED) %s.%s.%s, released %s", MainVersion, SubVersion, Build, Date)
 else
 	AIEN.performPhaseCycle()
-	env.info((ModuleName .. ": Loaded " .. MainVersion .. "." .. SubVersion .. "." .. Build .. ", released " .. Date))
+	AIEN.loggers.get(AIEN.Id):info("Loaded %s.%s.%s, released %s", MainVersion, SubVersion, Build, Date)
 end
 
 
