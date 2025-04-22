@@ -129,8 +129,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0154"
-local Date								= "2025.04.13"
+local Build 							= "0156"
+local Date								= "2025.04.22"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -5569,7 +5569,7 @@ local function getSA(group) -- built a situational awareness check
                                     t_type = "unknown"
                                 end
 
-                                local ob_cat = pcallGetCategory(initiator)
+                                local ob_cat = pcallGetCategory(tgt)
                                 local t_ucat = nil
                                 local t_scat = nil
                                 if ob_cat and ob_cat == 1 then
@@ -6167,7 +6167,7 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                 for _, og in pairs(groundgroupsDb) do
                     if og.coa == coa and og.tasked == false then
                         if og.class == "ARTY" or og.class == "MLRS" then --  or og.class == "MLRS" -- not considering MLRS as they're intended for more area or tactical fire
-                            if og.group and og.group:isExist() == true then
+                            if og.group and og.group:isExist() == true and og.sa and og.sa.pos then
                                 local d = getDist(og.sa.pos, tgtPos)
                                 if d < og.threat*0.9 then
                                     og.tasked = true
@@ -7055,7 +7055,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
         for _, og in pairs(groundgroupsDb) do
             if og.coa == group:getCoalition() then
                 if og.n ~= group:getName() then
-                    if og.group and og.group:isExist() == true then
+                    if og.group and og.group:isExist() == true and og.sa and og.sa.pos then
                         local p     = og.sa.pos
                         --local td    = og.threat
                         if p then -- and td
@@ -7401,7 +7401,7 @@ local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) -- thi
         for _, og in pairs(groundgroupsDb) do
             if og.coa == group:getCoalition() and og.n ~= group:getName() then
                 if og.group and og.group:isExist() == true then
-                    if supportGroundClasses[og.class] and supportGroundClasses[og.class] > bestVal then
+                    if supportGroundClasses[og.class] and supportGroundClasses[og.class] > bestVal and og.sa and og.sa.pos then
                         local p     = og.sa.pos
                         local td    = og.threat
                         if p and td then
@@ -7461,7 +7461,7 @@ local function ac_coverADS(group, ownPos, tgtPos, resume, sa, skill) -- this wil
         for _, og in pairs(groundgroupsDb) do
             if og.coa == group:getCoalition()  and og.n ~= group:getName() then
                 if og.group and og.group:isExist() == true then
-                    if supportCounterAirClasses[og.class] and supportCounterAirClasses[og.class] > bestVal then
+                    if supportCounterAirClasses[og.class] and supportCounterAirClasses[og.class] > bestVal and og.sa and og.sa.pos then
                         local p     = og.sa.pos
                         local td    = og.threat
                         if p and td then
@@ -7541,21 +7541,23 @@ local function ac_fireMissionOnShooter(group, ownPos, tgtPos, resume, sa, skill)
     
     if tgtPos then
         for _, og in pairs(groundgroupsDb) do
-            if og.coa == group:getCoalition() and og.tasked == false then
-                if og.class == "ARTY" then --  or og.class == "MLRS" -- not considering MLRS as they're intended for more area or tactical fire
+            if og.coa and og.coa == group:getCoalition() and og.tasked == false then
+                if og.class and og.class == "ARTY" then --  or og.class == "MLRS" -- not considering MLRS as they're intended for more area or tactical fire
                     if og.group and og.group:isExist() == true then
-                        local d = getDist(og.sa.pos, tgtPos)
-                        if d < og.threat*0.8 then
-                            og.tasked = true
-                            og.taskTime = timer.getTime()
-                            og.firePoint = tgtPos
-                            groupfireAtPoint({og.group, tgtPos, 20, "Immediate suppression"})
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return true, planning the fire mission"))
-                            end
+                        if og.sa and og.sa.pos and og.threat then
+                            local d = getDist(og.sa.pos, tgtPos)
+                            if d < og.threat*0.8 then
+                                og.tasked = true
+                                og.taskTime = timer.getTime()
+                                og.firePoint = tgtPos
+                                groupfireAtPoint({og.group, tgtPos, 20, "Immediate suppression"})
+                                if AIEN.config.AIEN_debugProcessDetail == true then
+                                    env.info((tostring(ModuleName) .. ", ac_fireMissionOnShooter return true, planning the fire mission"))
+                                end
 
-                            return true
-                       end
+                                return true
+                            end
+                        end
                     end
                 end
             end
@@ -8874,7 +8876,7 @@ local function update_ARTY()
                         
                         if AI_consent == true and groupAllowedForAI(gData.group) == true then -- both coalition AI should be on and group exclusion tag shouldn't be there
                             if gData.group then
-                                if gData.group and gData.group:isExist() == true and gData.sa then
+                                if gData.group and gData.group:isExist() == true and gData.sa and gData.sa.pos then
                                     if not underAttack[phase_index] and gData.tasked == false then
                                         if gData.class == "MLRS" or gData.class == "ARTY" then
                                             if gData.threat then
