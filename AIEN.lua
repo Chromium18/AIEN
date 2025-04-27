@@ -99,6 +99,7 @@ AIEN.config.disperseActionTime				  = 120		          -- seconds
 AIEN.config.counterBatteryRadarRange          = 50000             -- m, capable distance for a radar to perform counter battery calculations
 AIEN.config.counterBatteryPlanDelay           = 240               -- s, will be also randomized on +-35%. Used to define the delay of the planned counter battery fire if available
 AIEN.config.smoke_source_num                  = 5                 -- number, between 4 and 9. Generated smokes for each unit when smoke reaction is called in. Any number below 4 or above 9 will be converted in the nearest threshold
+AIEN.config.JTACasDrone                       = true              -- if true any JTAC unit will be also added in the droneunitDb, and will be used as a drone for the artillery fire missions. If false, it will be treated as a normal JTAC unit.
 
 -- SA evaluation variables
 AIEN.config.proxyBuildingDistance			  = 4000              -- m, if buildings are within this distance value, they are considered "close"
@@ -129,8 +130,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0156"
-local Date								= "2025.04.22"
+local Build 							= "0159"
+local Date								= "2025.04.27"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -5454,7 +5455,7 @@ end
 
 --## AWARENESS CONSTRUCTION FOR FSM USE -- the core of the reaction decision making behaviour: this functions use the upper ones to try to built a virtual situational awareness, and also collect for faster access some key informations.
 
-local function getSA(group) -- built a situational awareness check
+local function getSA(group) -- built a situational awareness check and also populate intelDb
     
 	if group and group:isExist() == true then
         local dbEntry = groundgroupsDb[group:getID()] or droneunitDb[group:getID()]
@@ -9090,10 +9091,35 @@ end
 -- I believe this is self explanatory. Still, the event_hit function holds a lot on reactions and decision making. I'm sorry if it appear confuse, but currently it fits my condition XD.
 
 local function event_hit(unit, shooter, weapon) -- this functions run eacht time a unit gets an hit. Unit only, no statics. That's basically the core for reactions
-
+    if not unit and not shooter then
+        env.info("AIEN.event_hit: both unit and shooter nil")
+        return
+    end
     if AIEN.config.reactions == true then
 
-        local unitCat = pcallGetCategory(unit)
+        local ugrp = nil
+        local unitCat = nil
+        
+        if unit then
+            local ok, g = pcall(Unit.getGroup, unit)
+            if ok and g and g:isExist() then
+                ugrp = g
+                env.info("AIEN.event_hit: group from unit -> "..g:getName())
+            end
+        end
+        
+        if ugrp then
+            local ok, c = pcall(Group.getCategory, ugrp)
+            if ok and c then
+                env.info("AIEN.event_hit: category from group -> "..tostring(c))
+                unitCat = c
+            end
+        end
+
+        if not unitCat then
+            return
+        end
+
         local shooterCat = pcallGetCategory(shooter)
 
         if unitCat == 1 and shooterCat == 1 then
@@ -9437,7 +9463,17 @@ local function event_birth(initiator)
         local subCat = nil
         objCat, subCat = initiator:getCategory()
         if objCat == 1 and subCat == 2 then -- unit, ground unit    
+            local passFilter = false
+            
             if not initiator:hasAttribute("Infantry") then
+                passFilter = true
+            else
+                if AIEN.config.JTACasDrone == true and initiator:getTypeName() == "JTAC" then
+                    passFilter = true
+                end
+            end
+            
+            if passFilter == true then
                 local gp = initiator:getGroup()
                 if gp then
                     if not groundgroupsDb[gp:getID()] then -- since event is launched for each unit, this prevent re-adding the same group multiple times
@@ -9450,26 +9486,27 @@ local function event_birth(initiator)
                         --env.info((tostring(ModuleName) .. ", event_birth: adding to groundgroupsDb " .. tostring(gp:getName() )))
                     end
                 end
-            elseif objCat == 1 and subCat == 0 then -- unit, plane unit (drone)	
-                local gp = initiator:getGroup() 
-                if gp then				
-                    local c = nil
-                    if gp:getUnits() and #gp:getUnits() > 0 then
-                        for _, un in pairs(gp:getUnits()) do
-                            if un:hasAttribute("UAVs") then -- drone only
-                                c = "UAV"
-                            end
+            end
+
+        elseif objCat == 1 and subCat == 0 then -- unit, plane unit (drone)	
+            local gp = initiator:getGroup() 
+            if gp then				
+                local c = nil
+                if gp:getUnits() and #gp:getUnits() > 0 then
+                    for _, un in pairs(gp:getUnits()) do
+                        if un:hasAttribute("UAVs") then -- drone only
+                            c = "UAV"
                         end
                     end
-                    if c then
-                        if AIEN.config.AIEN_debugProcessDetail == true then
-                            env.info((tostring(ModuleName) .. ", event_birth: adding to droneunitDb " .. tostring(un:getName() )))
-                        end
-                        
-                        droneunitDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition()}
-                    end                        					
                 end
-            end	
+                if c then
+                    if AIEN.config.AIEN_debugProcessDetail == true then
+                        env.info((tostring(ModuleName) .. ", event_birth: adding to droneunitDb " .. tostring(un:getName() )))
+                    end
+                    
+                    droneunitDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gp:getCoalition()}
+                end                        					
+            end
         end
     end
 end
