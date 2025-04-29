@@ -130,8 +130,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0159"
-local Date								= "2025.04.27"
+local Build 							= "0161"
+local Date								= "2025.04.29"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -4464,48 +4464,6 @@ local function genSmokePoints(pos, dist, n)
     return points
 end
 
---[[ old function temporary here
-local function pcallGetCategory(obj) -- done to avoid DCS errors 
-    local function effectiveCheck(obj)
-        if obj then
-           if obj:isExist() then
-                if obj:getPosition() then
-                    if Object.getCategory(obj) then
-                        return Object.getCategory(obj)
-                    else
-                        if AIEN.config.AIEN_debugProcessDetail == true then
-                            env.info(("AIEN pcallGetCategory, missing category"))
-                        end	
-                        return nil
-                    end
-                else
-                    if AIEN.config.AIEN_debugProcessDetail == true then
-                        env.info(("AIEN pcallGetCategory, missing pos"))
-                    end	
-                    return nil
-                end
-            else
-                if AIEN.config.AIEN_debugProcessDetail == true then
-                    env.info(("AIEN pcallGetCategory, isExist failed"))
-                end	
-                return nil 
-            end
-        else
-            if AIEN.config.AIEN_debugProcessDetail == true then
-				env.info(("AIEN pcallGetCategory, missing obj"))
-			end	
-            return nil 
-        end
-    end
-    local noError, errorOrResult = pcall(effectiveCheck, obj)
-    if noError then
-        return errorOrResult
-    else
-        env.info(string.format("AIEN pcallGetCategory, error returned when calling the function: %s", errorOrResult or ""))
-    end
-end
---]]--
-
 local function pcallGetCategory(obj) -- done to avoid DCS errors 
     local function effectiveCheck(obj)
         if obj then
@@ -4773,11 +4731,23 @@ end
 
 local function groupAllowedForAI(group)
     if group and group:isExist() and group:getUnits() and #group:getUnits() > 0 then
-        if contains(group:getName(), AIEN.config.AIEN_xcl_tag) then
-            return false
+        if type(AIEN.config.AIEN_xcl_tag) == 'string' then
+            if contains(group:getName(), AIEN.config.AIEN_xcl_tag) then
+                return false
+            end
+        elseif type(AIEN.config.AIEN_xcl_tag) == 'table' then
+            for _, tag in ipairs(AIEN.config.AIEN_xcl_tag) do
+                if contains(group:getName(), tag) then
+                    return false
+                end
+            end
+        else
+            env.info("AIEN groupAllowedForAI, AIEN_xcl_tag is not a string or table")
+            return true
         end
+        return true
     end
-    return true
+    
 end
 
 --###### GROUP AI QUERY FUNCTIONS ##################################################################
@@ -6909,7 +6879,7 @@ local function ac_panic(group, ownPos, tgtPos, resume, sa, skill) -- this will m
                     if maxTries < 0 then
                         break
                     end
-                    np = getRandTerrainPointInCircle(ownPos, AIEN.config.repositionDistance*10, AIEN.config.repositionDistance*5, true)
+                    np = getRandTerrainPointInCircle(ownPos, AIEN.config.repositionDistance*6, AIEN.config.repositionDistance*3, true)
                 end
                 
                 moveToPoint(group, np, 50, 5)
@@ -7408,7 +7378,7 @@ local function ac_groundSupport(group, ownPos, tgtPos, resume, sa, skill) -- thi
                         if p and td then
                             -- within range
                             local d = getDist(p, ownPos)
-                            if d and d < AIEN.config.supportDistance and d > 4000 then
+                            if d and d < AIEN.config.supportDistance and d > 3000 then
                                 bestTd = td/2
                                 bestVal = supportGroundClasses[og.class]
                                 AllyGroup = og.group
@@ -7653,8 +7623,8 @@ local actionsDb = {
         ["message"] = "We're trying to escape fire%!",
         ["resume"] = true,
         ["w_cat"] = { -- weapon category
-            [0] = 0.3, -- shell
-            [1] = 2, -- missile
+            [0] = 0.45, -- shell
+            [1] = 2.5, -- missile
             [2] = 0.5, -- rocket
             [3] = 0, -- bomb
         }, 				
@@ -7666,7 +7636,7 @@ local actionsDb = {
             [4] = 0, -- structure
         }, 				
         ["s_indirect"] = { -- unit category
-            [0] = 0, -- not an indirect fire unit
+            [0] = 0.5, -- not an indirect fire unit
             [1] = 0.5, -- is an indirect fire unit
         }, 			
         ["s_close"] = { -- shooter is within wpn range
@@ -7786,12 +7756,12 @@ local actionsDb = {
         ["resume"] = true,
         ["w_cat"] = { -- weapon category
             [0] = 0, -- shell
-            [1] = 5, -- missile
+            [1] = 3, -- missile
             [2] = 1, -- rocket
             [3] = 2, -- bomb
         }, 				
         ["s_cat"] = { -- unit category
-            [0] = 3, -- airplane
+            [0] = 2, -- airplane
             [1] = 5, -- helicopter
             [2] = 1, -- ground unit
             [3] = 0, -- ship
@@ -7810,7 +7780,7 @@ local actionsDb = {
             [1] = 0, -- detailed shooter position known
         },     
         ["o_cls"] = { 
-            ["MBT"] = 3,
+            ["MBT"] = 1.5,
             ["ATGM"] = 2,
             ["MLRS"] = 0,
             ["ARTY"] = 0,
@@ -7820,7 +7790,7 @@ local actionsDb = {
             ["AAA"] = 0,
             ["SAM"] = 0,
             ["IFV"] = 2,
-            ["APC"] = 2.2,
+            ["APC"] = 1.1,
             ["RECCE"] = 0,
             ["LOGI"] = 0,
             ["INF"] = 0,
@@ -7854,11 +7824,11 @@ local actionsDb = {
             [0] = 3, -- shell
             [1] = 2, -- missile
             [2] = 1, -- rocket
-            [3] = 1, -- bomb
+            [3] = 2, -- bomb
         }, 				
         ["s_cat"] = { -- unit category
-            [0] = 0, -- airplane
-            [1] = 0, -- helicopter
+            [0] = 1, -- airplane
+            [1] = 1, -- helicopter
             [2] = 2, -- ground unit
             [3] = 2, -- ship
             [4] = 1, -- structure
@@ -7986,7 +7956,7 @@ local actionsDb = {
             [0] = 2, -- shell
             [1] = 2, -- missile
             [2] = 2, -- rocket
-            [3] = 2, -- bomb
+            [3] = 1, -- bomb
         }, 				
         ["s_cat"] = { -- unit category
             [0] = 2, -- airplane
@@ -8056,7 +8026,7 @@ local actionsDb = {
         }, 				
         ["s_cat"] = { -- unit category
             [0] = 0, -- airplane
-            [1] = 0, -- helicopter
+            [1] = 1, -- helicopter
             [2] = 4, -- ground unit
             [3] = 0, -- ship
             [4] = 2, -- structure
