@@ -130,8 +130,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0161"
-local Date								= "2025.05.07"
+local Build 							= "0162"
+local Date								= "2025.05.10"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -6343,6 +6343,40 @@ local function findNearestEnemy(_side, _point, _searchDistance, _reposition)
 
 end
 
+local function getEnemyStrInrange(_side, _point, _searchDistance)
+
+    local _enemySide = nil
+    if _side == 1 then
+        _enemySide = 2
+    elseif _side == 2 then
+        _enemySide = 1
+    end
+
+    local volS = {
+    id = world.VolumeType.SPHERE,
+    params = {
+        point = _point,
+        radius = _searchDistance
+        }
+    }
+    
+    local _count = 0
+    local _search = function(_obj)
+        pcall(function()
+            if _obj then
+                if _obj:getLife() > 0 and _obj:getCoalition() == _enemySide then
+                    _count = _count + _obj:getLife()
+                end
+            end
+        end)
+        return true
+    end
+    world.searchObjects(Object.Category.UNIT, volS, _search)     
+
+    return _count
+
+end
+
 local function getAliveGroup(_group)
     if _group and _group:isExist() == true and #_group:getUnits() > 0 then
         return _group
@@ -6827,9 +6861,9 @@ local function ac_accelerate(group, ownPos, tgtPos, resume, sa, skill) -- self-e
             end
         else
             if AIEN.config.AIEN_debugProcessDetail then
-                env.info((tostring(ModuleName) .. ", ac_accelerate failed to get speed, returning true assuming stationary"))
+                env.info((tostring(ModuleName) .. ", ac_accelerate failed to get speed, group is stationary calling false"))
             end  
-            return true
+            return false
         end
     end
     return false
@@ -7110,6 +7144,20 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
     end    
     
     if group and tgtPos then
+
+        -- check for enemies nearby
+        local enemyForce = getEnemyStrInrange(group:getCoalition(), tgtPos, 8000)
+        if AIEN.config.AIEN_debugProcessDetail == true then
+            env.info((tostring(ModuleName) .. ", ac_attack enemyForce " .. tostring(enemyForce)))
+        end
+
+        if enemyForce and enemyForce > 20 then
+            if AIEN.config.AIEN_debugProcessDetail == true then
+                env.info((tostring(ModuleName) .. ", ac_attack enemy seems too strong for 1 group, abort action"))
+            end
+            return false
+        end
+
         local funcDoAction = function()
             if group:isExist() then
                 local speed = 10
@@ -7557,8 +7605,8 @@ local actionsDb = {
         ["message"] = "",
         ["resume"] = true,
         ["w_cat"] = { -- weapon category
-            [0] = 0, -- shell
-            [1] = 1, -- missile
+            [0] = 2, -- shell
+            [1] = 2, -- missile
             [2] = 1, -- rocket
             [3] = 0, -- bomb
         }, 				
@@ -7629,9 +7677,9 @@ local actionsDb = {
             [3] = 0, -- bomb
         }, 				
         ["s_cat"] = { -- unit category
-            [0] = 2, -- airplane
-            [1] = 2.5, -- helicopter
-            [2] = 1, -- ground unit
+            [0] = 1, -- airplane
+            [1] = 1, -- helicopter
+            [2] = 0.5, -- ground unit
             [3] = 1.5, -- ship
             [4] = 0, -- structure
         }, 				
@@ -7644,8 +7692,8 @@ local actionsDb = {
             [1] = 0, -- close
         }, 	     	      
         ["s_fireMis"] = { -- shooter position and speed
-            [0] = 2, -- detailed shooter position not known
-            [1] = 0, -- detailed shooter position known
+            [0] = 0, -- detailed shooter position not known
+            [1] = 1, -- detailed shooter position known
         },     
         ["o_cls"] = {
             ["MBT"] = 1.5,
@@ -7665,22 +7713,22 @@ local actionsDb = {
             ["UNKN"] = 0.1,
         },  
         ["s_cls"] = { 
-            ["MBT"] = 1.7,
-            ["ATGM"] = 1.6,
+            ["MBT"] = 1.3,
+            ["ATGM"] = 0.5,
             ["MLRS"] = 1.3,
-            ["ARTY"] = 1,
-            ["MISSILE"] = 0.5,
+            ["ARTY"] = 0.3,
+            ["MISSILE"] = 0.2,
             ["MANPADS"] = 0,
             ["SHORAD"] = 0,
             ["AAA"] = 0,
             ["SAM"] = 0,
-            ["IFV"] = 1.4,
+            ["IFV"] = 0.7,
             ["APC"] = 0.9,
             ["RECCE"] = 0.3,
             ["LOGI"] = 0.2,
             ["INF"] = 0.1,
             ["UNKN"] = 1,
-            ["ARBN"] = 1.8,
+            ["ARBN"] = 0.5,
         },            
     },     
 	[3] 	= { -- ac_disperse
@@ -7689,25 +7737,25 @@ local actionsDb = {
         ["message"] = "We're stuck here, we ask support if available",
         ["resume"] = true,
         ["w_cat"] = { -- weapon category
-            [0] = 1, -- shell
-            [1] = 2, -- missile
+            [0] = 0, -- shell
+            [1] = 0, -- missile
             [2] = 1, -- rocket
-            [3] = 2, -- bomb
+            [3] = 1, -- bomb
         }, 				
         ["s_cat"] = { -- unit category
             [0] = 0, -- airplane
             [1] = 0, -- helicopter
             [2] = 2, -- ground unit
-            [3] = 3, -- ship
+            [3] = 2, -- ship
             [4] = 0, -- structure
         }, 				
         ["s_indirect"] = { -- unit category
-            [0] = 0, -- not an indirect fire unit
-            [1] = 2, -- is an indirect fire unit
+            [0] = 1, -- not an indirect fire unit
+            [1] = 0, -- is an indirect fire unit
         }, 			
         ["s_close"] = { -- shooter is within wpn range
-            [0] = 1, -- not so close
-            [1] = 0, -- close
+            [0] = 0, -- not so close
+            [1] = 1, -- close
         }, 	     	      
         ["s_fireMis"] = { -- shooter position and speed
             [0] = 0, -- detailed shooter position not known
@@ -7733,9 +7781,9 @@ local actionsDb = {
         ["s_cls"] = { 
             ["MBT"] = 1,
             ["ATGM"] = 1.2,
-            ["MLRS"] = 2.5,
-            ["ARTY"] = 2.5,
-            ["MISSILE"] = 2.8,
+            ["MLRS"] = 1,
+            ["ARTY"] = 0,
+            ["MISSILE"] = 0,
             ["MANPADS"] = 0.3,
             ["SHORAD"] = 1.5,
             ["AAA"] = 0.6,
@@ -7762,7 +7810,7 @@ local actionsDb = {
         }, 				
         ["s_cat"] = { -- unit category
             [0] = 2, -- airplane
-            [1] = 5, -- helicopter
+            [1] = 1, -- helicopter
             [2] = 1, -- ground unit
             [3] = 0, -- ship
             [4] = 0, -- structure
@@ -7887,9 +7935,9 @@ local actionsDb = {
         ["message"] = "We're going to ambush the enemy",
         ["resume"] = true,
         ["w_cat"] = { -- weapon category
-            [0] = 2, -- shell
-            [1] = 0, -- missile
-            [2] = 1, -- rocket
+            [0] = 1, -- shell
+            [1] = 1, -- missile
+            [2] = 0, -- rocket
             [3] = 0, -- bomb
         }, 				
         ["s_cat"] = { -- unit category
@@ -9074,14 +9122,20 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
             local ok, g = pcall(Unit.getGroup, unit)
             if ok and g and g:isExist() then
                 ugrp = g
-                env.info("AIEN.event_hit: group from unit -> "..g:getName())
+                if AIEN.config.AIEN_debugProcessDetail == true then
+                    env.info("AIEN.event_hit: group from unit ok -> "..tostring(g:getName()))
+                    env.info("AIEN.event_hit: group from unit g -> "..tostring(g:getName()))
+                end
             end
         end
         
         if ugrp then
-            local ok, c = pcall(Group.getCategory, ugrp)
+            local ok, c, c2 = pcall(Group.getCategory, ugrp)
             if ok and c then
-                env.info("AIEN.event_hit: category from group -> "..tostring(c))
+                if AIEN.config.AIEN_debugProcessDetail == true then
+                    env.info("AIEN.event_hit: category from group ok -> "..tostring(ok))
+                    env.info("AIEN.event_hit: category from group c -> "..tostring(c))
+                end
                 unitCat = c
             end
         end
@@ -9091,8 +9145,11 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
         end
 
         local shooterCat = pcallGetCategory(shooter)
+        if AIEN.config.AIEN_debugProcessDetail == true then
+            env.info("AIEN.event_hit: shooterCat -> "..tostring(shooterCat))
+        end
 
-        if unitCat == 1 and shooterCat == 1 then
+        if unitCat == 2 and shooterCat == 1 then
 
             local vehicle       = unit:hasAttribute("Vehicles")
             local infantry      = unit:hasAttribute("Infantry")
