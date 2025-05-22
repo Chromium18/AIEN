@@ -9385,8 +9385,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                     if AIEN.config.AIEN_debugProcessDetail == true then
                                         env.info(("AIEN.event_hit, S_EVENT_HIT, shooter is airborne, removing less sensed decision"))
                                     end	                                  
-                                    av_ac[5] = nil -- remove attack
-                                    av_ac[7] = nil -- remove ground support
+                                    av_ac[6] = nil -- remove attack
+                                    av_ac[8] = nil -- remove ground support
                                     av_ac[3] = nil -- remove disperse
                                 end
                                 if s_cls ~= "ARBN" then -- shooter is not airborne
