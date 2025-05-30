@@ -130,8 +130,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "0"
-local Build 							= "0163"
-local Date								= "2025.05.24"
+local Build 							= "0164"
+local Date								= "2025.05.31"
 
 --## NOT USED (YET) / TO BE REMOVED
 local resumeRouteTimer                  = 300				-- seconds
@@ -5944,9 +5944,6 @@ end
 
 local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, reqUseRoad, formation, haltContact, issuedByClient, clientCoa, groupSpeed) -- move the group to a point or, if the point is missing, to a random position at about 2 km
     
-    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination x = " .. tostring(Vec3destination.x)))
-    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination y = " .. tostring(Vec3destination.y)))
-    env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination z = " .. tostring(Vec3destination.z)))
     if Vec3destination then
         local vt, vv = checkValidTerrainSurface(Vec3destination) 
         if vt == false then
@@ -5957,6 +5954,8 @@ local function moveToPoint(group, Vec3destination, destRadius, destInnerRadius, 
         else
             env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination is identified as land, type " .. tostring(vv)))
         end
+    else
+        env.info((tostring(ModuleName) .. ", moveToPoint Vec3destination is nil, will use random point"))
     end
     
     if group and group:isExist() == true then
