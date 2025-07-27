@@ -83,8 +83,8 @@ AIEN.config.inRoadSpeed                       = 15	              -- do *3.6 for 
 AIEN.config.infantrySpeed                     = 2	              -- do *3.6 for km/h, cause DCS thinks in m/s	
 AIEN.config.repositionDistance				  = 500		          -- meters, radius to a specific destination point that will be randomized between 90% and 110% of this value. Used when a group is moved upon another group position: the other group position will be the destination.
 AIEN.config.rndFleeDistance		              = 2000 		      -- meters, reposition distance given to a group when a destination is not defined. The direction also will be totally random. Used, i.e., for "panic" reaction
-AIEN.config.maxInitiativeDist	              = 2000 		      -- meters, define maximum distance allowed for each initiative movement
-AIEN.config.initiativeEngagedistance          = 8000              -- meters, define maximum distance allowed for each initiative movement when a group is engaged in combat. If the group is not engaged, the distance will be 2000 meters  
+AIEN.config.tacticalRange	                  = 15000 		      -- meters, define maximum distance allowed for each initiative movement
+AIEN.config.initiativeRange                   = 4000              -- meters, define maximum distance allowed for each initiative movement when a group is engaged in combat. If the group is not engaged, the distance will be 2000 meters  
 AIEN.config.maxSlope                          = 25	              -- degrees, maximum slope allowed for a group to move to a specific destination. If the slope is more than this value, the group will not move there.     
 
 -- dismounted troops variables
@@ -8701,6 +8701,31 @@ function AIEN_testReactions(groupName, actionName)
 end
 
 
+--###### MISSION TACTICAL ACTIONS ##################################################################
+
+--[[ Tactical actions are tasks that are issued by C2, given intel and own forces informations, in real time, to reposition ground units at medium ranges (up to 15 km unless you change AIEN.config.tacticalRange) 
+    While initiative is up to the single group with only it's own informations and targets detected, tactical actions are issued by C2 to reposition MBT, IFV, APC and ATGM groups in a more effective way, using the information available to the coalition
+
+    While optimizable, the code structure basically works this way:
+    1. For each non-tasked and not under attack group entry, it looks for intel contact within the tactical range, choosing the closest 5 of them. On each, it will evaluate them as units assemblies (not DCS groups) by proximity of 1 km each. For each assembly, it will consider units type total strenght.
+    2. After evaluation, different solutions are considered if enemies are within 8 km range:
+        - If an enemy units assemblies is significantly stronger than the group, it won't intervene or, if own group is arty, it will consider repositioning away from them (80% threat range or 15 km, the lesser).
+        - If an enemy units assemblies is significantly weaker than the group or non-threatening type (i.e. arty, air defences), and the group is a mover, it will plan a route to attack them and exploit the weakness.
+        - If an enemy units assemblies is similar in strength and the group is a mover or recce and the enemy is in arty range (but not suitable target), it will reposition to have a direct LOS on enemy.
+        These actions are executed by the executeActions function..
+    
+    3. if enemies are from 8 to 15 km away: 
+        - If an enemy units assemblies is significantly weaker or similar strenght than the group or non-threatening type (i.e. arty, air defences), and the group is a mover, it will get closer up to 6 km.
+
+    4. in any case where enemies are not attacked or engaged, C2 will open a task in the F10 menù for clients with relevant informations: target position, number & type, enemy known air defences within 50 km (bearing and range from tgt)
+
+--]]--
+
+-- QUIIIIIIIIIIII
+
+
+
+
 --###### DB CONSTRUCTION & HANDLING ################################################################
 
 --[[ DB structure
@@ -9242,12 +9267,27 @@ local function update_ARTY()
 end
 
 -- INITIATIVE update, PHASE "E"
-local function update_INITIATIVE()
+local function update_TACTICAL()
     if PHASE == "E" then -- confirm correct PHASE of performPhaseCycle
+
+
+                AIEN.changePhase()
+                timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
+                if AIEN.config.AIEN_debugProcessDetail then
+                    env.info((tostring(ModuleName) .. ", update_INITIATIVE: phase E completed or skipped. movingGroups: " .. tostring(movingGroups) .. ", max allowed: " .. tostring(AIEN.config.maxGroupInMovement)))
+                end       
+
+
+    end
+end
+
+-- INITIATIVE update, PHASE "F"
+local function update_INITIATIVE()
+    if PHASE == "F" then -- confirm correct PHASE of performPhaseCycle
         if groundgroupsDb and next(groundgroupsDb) ~= nil then -- check that table exist and that it's not void
             if not phase_index or AIEN.config.initiative == false or movingGroups >= AIEN.config.maxGroupInMovement then -- escape condition from the 2nd loop!
                 if AIEN.config.AIEN_debugProcessDetail then
-                    env.info((tostring(ModuleName) .. ", update_INITIATIVE: phase E completed or skipped. movingGroups: " .. tostring(movingGroups) .. ", max allowed: " .. tostring(AIEN.config.maxGroupInMovement)))
+                    env.info((tostring(ModuleName) .. ", update_INITIATIVE: phase F completed or skipped. movingGroups: " .. tostring(movingGroups) .. ", max allowed: " .. tostring(AIEN.config.maxGroupInMovement)))
                 end                
                 AIEN.changePhase()
                 timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
@@ -9285,7 +9325,7 @@ local function update_INITIATIVE()
                                                             dumpTableAIEN("Blue_MBT_2_targets.lua", gData.sa.targets, "int")
                                                         end
 
-                                                        local nearestDist = AIEN.config.initiativeEngagedistance or 10000 -- default value
+                                                        local nearestDist = AIEN.config.initiativeRange or 10000 -- default value
                                                         local nearest       = nil -- data of the group in groundgroupsDb, not the object
 
                                                         for tId, tData in pairs(gData.sa.targets) do
@@ -9342,7 +9382,7 @@ local function update_INITIATIVE()
                                                                         local MGRS_string = tostringMGRS(MGRS ,4)
 
                                                                         local txt = ""
-                                                                        txt = txt .. "C2, " .. tostring(gData.n) .. ", request movement to attack, coordinates:"
+                                                                        txt = txt .. tostring(gData.n) .. ", C2, " .. ", we're moving to engage hasty targets, coordinates:"
                                                                         txt = txt .. "\n" .. tostring(MGRS_string) .. "\n" .. tostring(LL_string)
                                                                         txt = txt .. "\n" .. "target is " .. tostring(nearest.class)
                                                                         
@@ -9364,7 +9404,7 @@ local function update_INITIATIVE()
                                                             end
                                                         else
                                                             --if AIEN.config.AIEN_debugProcessDetail then
-                                                                --env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " no suitable enemy within " .. tostring(AIEN.config.initiativeEngagedistance/1000) .. " km, skip initiative"))
+                                                                --env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " no suitable enemy within " .. tostring(AIEN.config.initiativeRange/1000) .. " km, skip initiative"))
                                                             --end                                                      
                                                         end
                                                     else
@@ -9414,7 +9454,6 @@ local function update_INITIATIVE()
     end
 end
 
-
 -- 1ST LEVEL CYCLE FUNCTIONS
 
 function AIEN.changePhase()
@@ -9454,13 +9493,22 @@ function AIEN.changePhase()
     elseif PHASE == "D" then
         PHASE = "E"
         phase_keys = nil
-        phase_keys = createIterator(groundgroupsDb) -- focus phase_keys on groundgroupsDb
+        phase_keys = createIterator(groundgroupsDb) -- focus phase_keys on groundgroupsDb -- QUESTO?!?!?!?!
         phase_index = phase_keys[1]
         if AIEN.config.AIEN_debugProcessDetail then
             env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
         end          
-    
+
     elseif PHASE == "E" then
+        PHASE = "F"
+        phase_keys = nil
+        phase_keys = createIterator(groundgroupsDb) -- focus phase_keys on groundgroupsDb
+        phase_index = phase_keys[1]
+        if AIEN.config.AIEN_debugProcessDetail then
+            env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
+        end           
+    
+    elseif PHASE == "F" then
         PHASE = "Z" -- LAST STEP
         AIEN.changePhase()
 
@@ -9506,7 +9554,10 @@ function AIEN.performPhaseCycle()
         update_ARTY()
 
     elseif PHASE == "E" then
-        update_INITIATIVE()      
+        update_TACTICAL()      
+
+    elseif PHASE == "F" then
+        update_INITIATIVE()   
 
     end
 end
