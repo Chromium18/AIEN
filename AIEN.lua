@@ -84,7 +84,7 @@ AIEN.config.infantrySpeed                     = 2	              -- do *3.6 for k
 AIEN.config.repositionDistance				  = 500		          -- meters, radius to a specific destination point that will be randomized between 90% and 110% of this value. Used when a group is moved upon another group position: the other group position will be the destination.
 AIEN.config.rndFleeDistance		              = 2000 		      -- meters, reposition distance given to a group when a destination is not defined. The direction also will be totally random. Used, i.e., for "panic" reaction
 AIEN.config.tacticalRange	                  = 15000 		      -- meters, define maximum distance allowed for each initiative movement
-AIEN.config.initiativeRange                   = 4000              -- meters, define maximum distance allowed for each initiative movement when a group is engaged in combat. If the group is not engaged, the distance will be 2000 meters  
+AIEN.config.initiativeRange                   = 7000              -- meters, define maximum distance allowed for each initiative movement when a group is engaged in combat. If the group is not engaged, the distance will be 2000 meters  
 AIEN.config.maxSlope                          = 25	              -- degrees, maximum slope allowed for a group to move to a specific destination. If the slope is more than this value, the group will not move there.     
 
 -- dismounted troops variables
@@ -136,9 +136,9 @@ end
 --## LOCAL GENERAL INFORMATIONS VARIABLES (mostly used for debug log and info)
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
-local SubVersion 						= "2"
+local SubVersion 						= "3"
 local Build 							= "0175"
-local Date								= "2025.07.26"
+local Date								= "2025.08.03"
 
 --## LOCAL LOW LEVEL VARIABLES
 
@@ -8768,9 +8768,32 @@ local function populate_Db() -- this one is launched once at mission start and c
                 local s = getGroupSkillNum(gp)
                 env.info((tostring(ModuleName) .. ", populate_Db: s " .. tostring(s)))
                 local det, thr = getRanges(gp)
+                local hasRoute = false
+                for coa_name, coa_data in pairs(env.mission.coalition) do
+                    if type(coa_data) == 'table' then
+                        if coa_data.country then --there is a country table
+                            for cntry_id, cntry_data in pairs(coa_data.country) do
+                                for obj_type_name, obj_type_data in pairs(cntry_data) do
+                                    if obj_type_name == "vehicle" then	-- only these types have points
+                                        if ((type(obj_type_data) == 'table') and obj_type_data.group and (type(obj_type_data.group) == 'table') and (#obj_type_data.group > 0)) then	--there's a group!
+                                            for group_num, group_data in pairs(obj_type_data.group) do
+                                                if group_data and group_data.name == gp:getName() then -- this is the group we are looking for
+                                                    if group_data.route and group_data.route.points and #group_data.route.points > 0 then
+                                                        hasRoute = true
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
                 if c then
                     --local r = getMEroute(gp)
-                    groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gpcoa, detection = det, threat = thr, tasked = false, skill = s}  --, route = r
+                    groundgroupsDb[gp:getID()] = {group = gp, class = c, n = gp:getName(), coa = gpcoa, detection = det, threat = thr, tasked = false, skill = s, hasMeRoute = hasRoute}  --, route = r
                     env.info((tostring(ModuleName) .. ", populate_Db: adding to groundgroupsDb " .. tostring(gp:getName() .. ", class " .. tostring(c) )))
                 else
                     env.info((tostring(ModuleName) .. ", populate_Db: skipping group due to unable to identify class " .. tostring(gp:getName() )))
@@ -9283,7 +9306,7 @@ end
 
 -- INITIATIVE update, PHASE "F"
 local function update_INITIATIVE()
-    if PHASE == "F" then -- confirm correct PHASE of performPhaseCycle
+    if PHASE == "E" then -- confirm correct PHASE of performPhaseCycle
         if groundgroupsDb and next(groundgroupsDb) ~= nil then -- check that table exist and that it's not void
             if not phase_index or AIEN.config.initiative == false or movingGroups >= AIEN.config.maxGroupInMovement then -- escape condition from the 2nd loop!
                 if AIEN.config.AIEN_debugProcessDetail then
@@ -9295,146 +9318,161 @@ local function update_INITIATIVE()
                 if not underAttack[phase_index] then -- skip if group is under attack
                     local gData = groundgroupsDb[phase_index]
                     if gData then
+                        if gData.hasMeRoute == false then
+                            local otherCoa = nil
+                            local AI_consent = true
+                            if gData.coa == 2 and AIEN.config.blueAI == false then
+                                AI_consent = false
+                                otherCoa = 1
+                            end
+                            if gData.coa == 1 and AIEN.config.redAI == false then
+                                AI_consent = false
+                                otherCoa = 2
+                            end                
+                            local remove = false
+                            
+                            if AI_consent == true then -- both coalition AI should be on and group exclusion tag shouldn't be there
+                                if groupAllowedForAI(gData.group) == true then
+                                    if gData.group then
+                                        if gData.group and gData.group:isExist() == true then
+                                            if gData.sa and gData.sa.pos then
+                                                if gData.tasked == false then
+                                                    if gData.class == "MBT" or gData.class == "ATGM" or gData.class == "IFV" or gData.class == "APC" or gData.class == "RECCE" then -- find another way for indirect fire groups?
+                                                        --if AIEN.config.AIEN_debugProcessDetail then
+                                                        --    env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " is in contact with enemy, evaluating direct threat"))
+                                                        --end  
 
-                        local otherCoa = nil
-                        local AI_consent = true
-                        if gData.coa == 2 and AIEN.config.blueAI == false then
-                            AI_consent = false
-                            otherCoa = 1
-                        end
-                        if gData.coa == 1 and AIEN.config.redAI == false then
-                            AI_consent = false
-                            otherCoa = 2
-                        end                
-                        local remove = false
-                        
-                        if AI_consent == true and groupAllowedForAI(gData.group) == true then -- both coalition AI should be on and group exclusion tag shouldn't be there
-                            if gData.group then
-                                if gData.group and gData.group:isExist() == true then
-                                    if gData.sa and gData.sa.pos then
-                                        if gData.tasked == false then
-                                            if gData.class == "MBT" or gData.class == "ATGM" or gData.class == "IFV" or gData.class == "APC" or gData.class == "RECCE" then -- find another way for indirect fire groups?
-                                                --if AIEN.config.AIEN_debugProcessDetail then
-                                                --    env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " is in contact with enemy, evaluating direct threat"))
-                                                --end  
+                                                        if gData.sa and gData.sa.str > 3 then
+                                                            if gData.sa.targets and gData.sa.targets ~= {} then
 
-                                                if gData.sa and gData.sa.str > 3 then
-                                                    if gData.sa.targets and gData.sa.targets ~= {} then
+                                                                if gData.n == "Blue_MBT_2" then
+                                                                    dumpTableAIEN("Blue_MBT_2_targets.lua", gData.sa.targets, "int")
+                                                                end
 
-                                                        if gData.n == "Blue_MBT_2" then
-                                                            dumpTableAIEN("Blue_MBT_2_targets.lua", gData.sa.targets, "int")
-                                                        end
+                                                                local nearestDist = AIEN.config.initiativeRange or 10000 -- default value
+                                                                local nearest       = nil -- data of the group in groundgroupsDb, not the object
 
-                                                        local nearestDist = AIEN.config.initiativeRange or 10000 -- default value
-                                                        local nearest       = nil -- data of the group in groundgroupsDb, not the object
+                                                                for tId, tData in pairs(gData.sa.targets) do
 
-                                                        for tId, tData in pairs(gData.sa.targets) do
-
-                                                            if AIEN.config.AIEN_debugProcessDetail then
-                                                                env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. "  check target: " .. tostring(tData.object:getName())))
-                                                            end  
-
-                                                            if tData.object and tData.object:isExist() == true then
-                                                                local g = tData.object:getGroup()
-                                                                local g_id = g:getID()
-                                                                local e = groundgroupsDb[g_id]
-
-                                                                if e and e.sa and e.sa.pos then
-                                                                    local d = getDist(gData.sa.pos, e.sa.pos, true)
                                                                     if AIEN.config.AIEN_debugProcessDetail then
-                                                                        env.info((tostring(ModuleName) .. ", update_INITIATIVE: tgt distance " .. tostring(d) .. " meters"))
-                                                                    end                                                                      
+                                                                        env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. "  check target: " .. tostring(tData.object:getName())))
+                                                                    end  
 
-                                                                    local d = getDist(gData.sa.pos, e.sa.pos)
-                                                                    if d < nearestDist then
-                                                                        nearest         = e
-                                                                        nearestDist     = d
+                                                                    if tData.object and tData.object:isExist() == true then
+                                                                        local g = tData.object:getGroup()
+                                                                        local g_id = g:getID()
+                                                                        local e = groundgroupsDb[g_id]
+
+                                                                        if e and e.sa and e.sa.pos then
+                                                                            local d = getDist(gData.sa.pos, e.sa.pos, true)
+                                                                            if AIEN.config.AIEN_debugProcessDetail then
+                                                                                env.info((tostring(ModuleName) .. ", update_INITIATIVE: tgt distance " .. tostring(d) .. " meters"))
+                                                                            end                                                                      
+
+                                                                            local d = getDist(gData.sa.pos, e.sa.pos)
+                                                                            if d < nearestDist then
+                                                                                nearest         = e
+                                                                                nearestDist     = d
+                                                                                if AIEN.config.AIEN_debugProcessDetail then
+                                                                                    env.info((tostring(ModuleName) .. ", update_INITIATIVE: defined as nearest"))
+                                                                                end                                                                             
+                                                                            end
+                                                                        end
+                                                                    end
+                                                                end
+
+                                                                if nearest then
+                                                                    local en_str = nearest.sa.str or 5 -- default value
+                                                                    local ow_str = gData.sa.str
+                                                                    
+                                                                    if AIEN.config.AIEN_debugProcessDetail then
+                                                                        env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. ":  nearest enemy group " ..  tostring(nearest.n) .. " strength: " .. tostring(en_str) .. ", own strength: " .. tostring(ow_str)))
+                                                                    end
+
+                                                                    if ow_str > en_str then
+                                                                        local vec3 = pointBetween(gData.sa.pos, nearest.sa.pos, 5000)
                                                                         if AIEN.config.AIEN_debugProcessDetail then
-                                                                            env.info((tostring(ModuleName) .. ", update_INITIATIVE: defined as nearest"))
-                                                                        end                                                                             
-                                                                    end
-                                                                end
-                                                            end
-                                                        end
-
-                                                        if nearest then
-                                                            local en_str = nearest.sa.str or 5 -- default value
-                                                            local ow_str = gData.sa.str
-                                                            
-                                                            if AIEN.config.AIEN_debugProcessDetail then
-                                                                env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. ":  nearest enemy group " ..  tostring(nearest.n) .. " strength: " .. tostring(en_str) .. ", own strength: " .. tostring(ow_str)))
-                                                            end
-
-                                                            if ow_str > en_str then
-                                                                local vec3 = pointBetween(gData.sa.pos, nearest.sa.pos, 5000)
-                                                                if AIEN.config.AIEN_debugProcessDetail then
-                                                                    env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. "  found suitable destination for movement"))
-                                                                end         
-                                                                
-                                                                -- message feedback
-                                                                if AIEN.config.message_feed == true then
-
-                                                                    local lat, lon = coord.LOtoLL(vec3)
-                                                                    local MGRS = coord.LLtoMGRS(coord.LOtoLL(vec3))
-                                                                    if lat and lon then
-
-                                                                        local LL_string = tostringLL(lat, lon, 0, true)
-                                                                        local MGRS_string = tostringMGRS(MGRS ,4)
-
-                                                                        local txt = ""
-                                                                        txt = txt .. tostring(gData.n) .. ", C2, " .. ", we're moving to engage hasty targets, coordinates:"
-                                                                        txt = txt .. "\n" .. tostring(MGRS_string) .. "\n" .. tostring(LL_string)
-                                                                        txt = txt .. "\n" .. "target is " .. tostring(nearest.class)
+                                                                            env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. "  found suitable destination for movement"))
+                                                                        end         
                                                                         
-                                                                        local vars = {"text", txt, 20, nil, nil, nil, gData.coa}
+                                                                        -- message feedback
+                                                                        if AIEN.config.message_feed == true then
 
-                                                                        multyTypeMessage(vars)
+                                                                            local lat, lon = coord.LOtoLL(vec3)
+                                                                            local MGRS = coord.LLtoMGRS(coord.LOtoLL(vec3))
+                                                                            if lat and lon then
+
+                                                                                local LL_string = tostringLL(lat, lon, 0, true)
+                                                                                local MGRS_string = tostringMGRS(MGRS ,4)
+
+                                                                                local txt = ""
+                                                                                txt = txt .. tostring(gData.n) .. ", C2, " .. ", we're moving to engage hasty targets, coordinates:"
+                                                                                txt = txt .. "\n" .. tostring(MGRS_string) .. "\n" .. tostring(LL_string)
+                                                                                txt = txt .. "\n" .. "target is " .. tostring(nearest.class)
+                                                                                
+                                                                                local vars = {"text", txt, 20, nil, nil, nil, gData.coa}
+
+                                                                                multyTypeMessage(vars)
+
+                                                                            end
+                                                                        end
+
+                                                                        gData.tasked = true
+                                                                        gData.taskTime = timer.getTime()
+                                                                        moveToPoint(gData.group, vec3, 300, 100, false, "cone", true, false, false, nil)
+                                                                    else
+                                                                        if AIEN.config.AIEN_debugProcessDetail then
+                                                                            env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " is weaker than the nearest enemy, skip initiative"))
+                                                                        end                                                            
 
                                                                     end
+                                                                else
+                                                                    --if AIEN.config.AIEN_debugProcessDetail then
+                                                                        --env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " no suitable enemy within " .. tostring(AIEN.config.initiativeRange/1000) .. " km, skip initiative"))
+                                                                    --end                                                      
                                                                 end
-
-                                                                gData.tasked = true
-                                                                gData.taskTime = timer.getTime()
-                                                                moveToPoint(gData.group, vec3, 300, 100, false, "cone", true, false, false, nil)
                                                             else
                                                                 if AIEN.config.AIEN_debugProcessDetail then
-                                                                    env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " is weaker than the nearest enemy, skip initiative"))
-                                                                end                                                            
-
+                                                                    env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " no targets identified in targets table, skip initiative"))
+                                                                end                                                      
                                                             end
                                                         else
-                                                            --if AIEN.config.AIEN_debugProcessDetail then
-                                                                --env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " no suitable enemy within " .. tostring(AIEN.config.initiativeRange/1000) .. " km, skip initiative"))
-                                                            --end                                                      
+                                                            if AIEN.config.AIEN_debugProcessDetail then
+                                                                env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " gData sa not available or strenght not available, skip initiative"))
+                                                            end  
                                                         end
-                                                    else
-                                                        if AIEN.config.AIEN_debugProcessDetail then
-                                                            env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " no targets identified in targets table, skip initiative"))
-                                                        end                                                      
                                                     end
                                                 else
                                                     if AIEN.config.AIEN_debugProcessDetail then
-                                                        env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " gData sa not available or strenght not available, skip initiative"))
+                                                        env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " is already tasked, skip initiative"))
                                                     end  
-                                                end
+                                                end                                            
+                                            else
+                                                if AIEN.config.AIEN_debugProcessDetail then
+                                                    env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " SA not available"))
+                                                end                                        
                                             end
                                         else
                                             if AIEN.config.AIEN_debugProcessDetail then
-                                                env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " is already tasked, skip initiative"))
-                                            end  
-                                        end                                            
+                                                env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " not available"))
+                                            end
+                                        end
                                     else
                                         if AIEN.config.AIEN_debugProcessDetail then
-                                            env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " SA not available"))
-                                        end                                        
+                                            env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " missing group info in the db"))
+                                        end
                                     end
                                 else
                                     if AIEN.config.AIEN_debugProcessDetail then
-                                        env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " not available"))
-                                    end
+                                        env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " specific group not allowed for AI, skipping"))
+                                    end                                
                                 end
                             end
-                        end
+                        else
+                            if AIEN.config.AIEN_debugProcessDetail then
+                                env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " already has a planned route from ME, skipping"))
+                            end                                
+                        end                            
                     end
                 else
                     if AIEN.config.AIEN_debugProcessDetail then
@@ -9491,24 +9529,26 @@ function AIEN.changePhase()
         end
         
     elseif PHASE == "D" then
+        
         PHASE = "E"
         phase_keys = nil
         phase_keys = createIterator(groundgroupsDb) -- focus phase_keys on groundgroupsDb -- QUESTO?!?!?!?!
         phase_index = phase_keys[1]
         if AIEN.config.AIEN_debugProcessDetail then
             env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
-        end          
+        end       
 
-    elseif PHASE == "E" then
+    --[[ elseif PHASE == "E" then
         PHASE = "F"
         phase_keys = nil
         phase_keys = createIterator(groundgroupsDb) -- focus phase_keys on groundgroupsDb
         phase_index = phase_keys[1]
         if AIEN.config.AIEN_debugProcessDetail then
             env.info((tostring(ModuleName) .. ", AIEN.changePhase, new PHASE: " .. tostring(PHASE)))
-        end           
+        end  
+    --]]--         
     
-    elseif PHASE == "F" then
+    elseif PHASE == "E" then
         PHASE = "Z" -- LAST STEP
         AIEN.changePhase()
 
@@ -9554,10 +9594,11 @@ function AIEN.performPhaseCycle()
         update_ARTY()
 
     elseif PHASE == "E" then
-        update_TACTICAL()      
-
-    elseif PHASE == "F" then
         update_INITIATIVE()   
+        --update_TACTICAL()      
+
+    --elseif PHASE == "F" then
+        --update_INITIATIVE()   
 
     end
 end
