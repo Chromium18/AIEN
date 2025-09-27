@@ -32,19 +32,23 @@ Usage informations:
 - you will be able to customize each of its "features", by enabling and disabling each option you want to use, here below  
 
 Purpose and limitations:
-The script does not want to provide a complete "automated ground war" thing: this is already in development by both ED and also by DSMC script by me. 
-In fact, this script is a part of the DSMC script, but still usable externally as standalone.
+- AIEN dismount feature (see below) can't be run along with CTLD or CSAR script, to avoid conflicts on on-board troop management. For this reason, you should disable the dismount option if you use CTLD or CSAR or both. If you don't, there's still an automated check that will disable AIEN dismount itself if you forgot it.
+- The script does not want to provide a complete "automated ground war" thing: this is already in development by both ED and also by DSMC 2 script by me. In fact, this script is also a part of the DSMC 2 script, but still usable externally as standalone.
+
+
 
 Suggestion, ideas:
 -- Please refer to the script GitHub project, you will find the project details to suggest modification, contribute with coding and else.
 
-
 --]]--
 
 --## GLOBAL GENERAL AIEN CONTENT TABLE
-AIEN                                	= {}
+AIEN                            = {}        -- don't change this
 
---## USER CUSTOMIZATION VARIABLES ##
+-- ############################################################################################################
+--## USER CUSTOMIZATION VARIABLES ## CHECK AIEN GITHUB PAGE FOR ISTRO AND FEEL FREE TO CUSTOMIZE BELOW ########
+-- ############################################################################################################
+
 AIEN.config = {}
 AIEN.config.dontInitialize      = false     -- if true, AIEN will not initialize; instead, you'll have to run it from your own code - it's useful when you want to override some functions/parameters before the initialization takes place
 
@@ -72,8 +76,10 @@ AIEN.config.maxGroupInMovement  = 10        -- number, used to limit the maximum
 AIEN.config.AIEN_debugProcessDetail = true
 
 
+-- ############################################################################################################
+--## LOCAL HIGH LEVEL VARIABLES ###############################################################################
+-- ############################################################################################################
 
---## LOCAL HIGH LEVEL VARIABLES ##
 -- changing the variable below is for fine customization, but it's not recommended cause it can change the code behaviour. 
 -- If you do so, please revert to original value and retry before reporting bugs.
 
@@ -137,8 +143,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "3"
-local Build 							= "0175"
-local Date								= "2025.08.03"
+local Build 							= "0181"
+local Date								= "2025.09.27"
 
 --## LOCAL LOW LEVEL VARIABLES
 
@@ -8721,10 +8727,6 @@ end
 
 --]]--
 
--- QUIIIIIIIIIIII
-
-
-
 
 --###### DB CONSTRUCTION & HANDLING ################################################################
 
@@ -9008,6 +9010,18 @@ local function update_GROUND()
                 env.info((tostring(ModuleName) .. ", update_GROUND, reinizializzazione dei DB, poiché groundgroupsDb sembra vuoto o inesistente!"))
             end
             timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
+        end
+    end
+end
+
+local function check_CTLD_CSAR()
+    if AIEN.config.dismount == true then
+        if ctld or csar then
+            AIEN.config.dismount = false
+            env.info(("AIEN.check_CTLD_CSAR, identified CTLD or CSAR script being active, disabling AIEN dismount feature to prevent issues"))
+            mountedDb         = {}
+            infcarrierDb      = {}
+            trigger.action.outText("AIEN information: identified CTLD or CSAR script being active, disabling AIEN dismount feature to prevent issues", 20)
         end
     end
 end
@@ -9582,6 +9596,7 @@ function AIEN.performPhaseCycle()
         timer.scheduleFunction(AIEN.performPhaseCycle, {}, timer.getTime() + phaseCycleTimer)
 
     elseif PHASE == "A" then
+        check_CTLD_CSAR()
         update_GROUND()
 
     elseif PHASE == "B" then
