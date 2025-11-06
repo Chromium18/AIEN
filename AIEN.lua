@@ -73,7 +73,7 @@ AIEN.config.skill_action_const  = false     -- true/false. If true, AI available
 AIEN.config.maxGroupInMovement  = 10        -- number, used to limit the maximum number of groups that can be in movement at the same time. If more than this number are in movement, the script will not allow new movements until one of them is finished. This is useful to avoid too many groups moving at the same time and causing performance issues.    
 
 -- User bug report: prior to report a bug, please try reproducing it with this variable set to "true"
-AIEN.config.AIEN_debugProcessDetail = true
+AIEN.config.AIEN_debugProcessDetail = false
 
 
 -- ############################################################################################################
