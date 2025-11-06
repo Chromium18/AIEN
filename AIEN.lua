@@ -13620,8 +13620,8 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
         env.info("AIEN.event_hit: both unit and shooter nil")
         return
     end
-    if AIEN.config.reactions == true then
 
+    --if AIEN.config.reactions == true then
         local ugrp = nil
         local unitCat = nil
         
@@ -13737,109 +13737,32 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
 
                         -- reaction part
                         local choosenAct = nil
-                        if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
-                            
-                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) ))
-                            end					
-
-                            -- retrieve SA & Controller
-                            local con = group:getController()
-                            local db_group = groundgroupsDb[group:getID()]
-                            if con and db_group and db_group.sa then
-
-                                -- define if the attacker is known and and with what details
-                                local s_detected, s_visible, s_lastTime, s_type, s_distance, s_lastPos, s_lastVel, s_cat, w_cat, o_cat, s_indirect, s_close, s_fireMis, a_pos, o_cls, s_cls, o_pos
-                                w_cat       = 0
-                                s_cat       = nil
-                                s_indirect  = 0
-                                s_close     = 0
-                                s_fireMis   = 0
-                                o_cls       = db_group.sa.cls
-                                s_cls       = "UNKN"
-                                o_pos       = unit:getPoint()
+                        if AIEN.config.reactions == true then
+                            if not underAttack[group:getID()] then -- if a group has already been identified as "attacked", it won't repeat all the whole process every time or it could became a freaking mess in case of multiple hits
                                 
-                                -- define weapon info, used to identify arty attack
-                                if weapon and weapon:isExist() then
-                                    w_cat = weapon:getDesc().category
-                                    --[[-- 
-                                        Weapon.Category
-                                        SHELL     0
-                                        MISSILE   1
-                                        ROCKET    2
-                                        BOMB      3
-                                    --]]--
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", w_cat: " .. tostring(w_cat) ))
-                                    end								
-                                end
+                                if AIEN.config.AIEN_debugProcessDetail == true then
+                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) ))
+                                end					
 
-                                if shooter and con then
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, shooter known"))
-                                    end	
+                                -- retrieve SA & Controller
+                                local con = group:getController()
+                                local db_group = groundgroupsDb[group:getID()]
+                                if con and db_group and db_group.sa then
 
-                                    -- revise a_pos
-                                    a_pos = shooter:getPoint()
-
-                                    -- parameters identification
-                                    s_detected , s_visible , s_lastTime , s_type , s_distance , s_lastPos , s_lastVel = con:isTargetDetected(shooter)
-
-                                    o_cat, s_cat = shooter:getCategory()
-                                    s_cls = getUnitClass(shooter)
-
-
-                                    --[[ o_cat: 
-                                        UNIT    1
-                                        WEAPON  2
-                                        STATIC  3
-                                        BASE    4
-                                        SCENERY 5
-                                        Cargo   6
-                                    --]]--                                        
+                                    -- define if the attacker is known and and with what details
+                                    local s_detected, s_visible, s_lastTime, s_type, s_distance, s_lastPos, s_lastVel, s_cat, w_cat, o_cat, s_indirect, s_close, s_fireMis, a_pos, o_cls, s_cls, o_pos
+                                    w_cat       = 0
+                                    s_cat       = nil
+                                    s_indirect  = 0
+                                    s_close     = 0
+                                    s_fireMis   = 0
+                                    o_cls       = db_group.sa.cls
+                                    s_cls       = "UNKN"
+                                    o_pos       = unit:getPoint()
                                     
-                                    --[[ s_cat: 
-                                        AIRPLANE      = 0,
-                                        HELICOPTER    = 1,
-                                        GROUND_UNIT   = 2,
-                                        SHIP          = 3,
-                                        STRUCTURE     = 4
-                                    --]]--
-                                    
-                                    -- shooter is indirect fire
-                                    if shooter:hasAttribute("Indirect fire") then
-                                        s_indirect = 1
-                                    end
-
-                                    -- shooter is close
-                                    if a_pos and position then
-                                        local d = db_group.sa.rng or 1500
-                                        local dist = getDist(a_pos, position)
-                                        if dist < d then
-                                            s_close = 1
-                                        end
-                                    end      
-
-                                    -- position and speed
-                                    --[[ removed cause of issues with isTargetDetected function returned variables
-                                    if a_pos and s_lastVel and s_lastTime then
-                                        if timer.getTime() - s_lastTime < 30 and s_lastVel < 1 then
-                                            s_fireMis = 1
-                                        end
-                                    end
-                                    --]]--
-                                    local rnd = math.random(1,100)
-                                    if rnd > 70 then
-                                        s_fireMis = 1
-                                    end
-
-
-                                else -- try to address things when the shooter is unknown, based on weapon and effects
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown"))
-                                    end	 
-
-                                    if w_cat then
+                                    -- define weapon info, used to identify arty attack
+                                    if weapon and weapon:isExist() then
+                                        w_cat = weapon:getDesc().category
                                         --[[-- 
                                             Weapon.Category
                                             SHELL     0
@@ -13847,122 +13770,201 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                                             ROCKET    2
                                             BOMB      3
                                         --]]--
-                                        if w_cat == 0 or w_cat == 2 then -- shooter is unknown, and the weapon is a shell or a rocket: artillery is possibile
+                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", w_cat: " .. tostring(w_cat) ))
+                                        end								
+                                    end
+
+                                    if shooter and con then
+                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, shooter known"))
+                                        end	
+
+                                        -- revise a_pos
+                                        a_pos = shooter:getPoint()
+
+                                        -- parameters identification
+                                        s_detected , s_visible , s_lastTime , s_type , s_distance , s_lastPos , s_lastVel = con:isTargetDetected(shooter)
+
+                                        o_cat, s_cat = shooter:getCategory()
+                                        s_cls = getUnitClass(shooter)
+
+
+                                        --[[ o_cat: 
+                                            UNIT    1
+                                            WEAPON  2
+                                            STATIC  3
+                                            BASE    4
+                                            SCENERY 5
+                                            Cargo   6
+                                        --]]--                                        
+                                        
+                                        --[[ s_cat: 
+                                            AIRPLANE      = 0,
+                                            HELICOPTER    = 1,
+                                            GROUND_UNIT   = 2,
+                                            SHIP          = 3,
+                                            STRUCTURE     = 4
+                                        --]]--
+                                        
+                                        -- shooter is indirect fire
+                                        if shooter:hasAttribute("Indirect fire") then
                                             s_indirect = 1
-                                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                                env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but arty fire possibile"))
-                                            end	 
-                                        elseif w_cat == 1 or w_cat == 3 then -- shooter is unknown, and the weapon is a missile or a bomb: airborne threat is possibile
-                                            s_cls = "ARBN"
-                                            if AIEN.config.AIEN_debugProcessDetail == true then
-                                                env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but airborne fire possibile"))
-                                            end	 
                                         end
 
+                                        -- shooter is close
+                                        if a_pos and position then
+                                            local d = db_group.sa.rng or 1500
+                                            local dist = getDist(a_pos, position)
+                                            if dist < d then
+                                                s_close = 1
+                                            end
+                                        end      
+
+                                        -- position and speed
+                                        --[[ removed cause of issues with isTargetDetected function returned variables
+                                        if a_pos and s_lastVel and s_lastTime then
+                                            if timer.getTime() - s_lastTime < 30 and s_lastVel < 1 then
+                                                s_fireMis = 1
+                                            end
+                                        end
+                                        --]]--
+                                        local rnd = math.random(1,100)
+                                        if rnd > 70 then
+                                            s_fireMis = 1
+                                        end
+
+
+                                    else -- try to address things when the shooter is unknown, based on weapon and effects
+                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown"))
+                                        end	 
+
+                                        if w_cat then
+                                            --[[-- 
+                                                Weapon.Category
+                                                SHELL     0
+                                                MISSILE   1
+                                                ROCKET    2
+                                                BOMB      3
+                                            --]]--
+                                            if w_cat == 0 or w_cat == 2 then -- shooter is unknown, and the weapon is a shell or a rocket: artillery is possibile
+                                                s_indirect = 1
+                                                if AIEN.config.AIEN_debugProcessDetail == true then
+                                                    env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but arty fire possibile"))
+                                                end	 
+                                            elseif w_cat == 1 or w_cat == 3 then -- shooter is unknown, and the weapon is a missile or a bomb: airborne threat is possibile
+                                                s_cls = "ARBN"
+                                                if AIEN.config.AIEN_debugProcessDetail == true then
+                                                    env.info(("AIEN.event_hit, S_EVENT_HIT, shooter unknown but airborne fire possibile"))
+                                                end	 
+                                            end
+
+                                        end
                                     end
-                                end
 
-                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", w_cat: " .. tostring(w_cat) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_cat: " .. tostring(s_cat) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_indirect: " .. tostring(s_indirect) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_close: " .. tostring(s_close) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_fireMis: " .. tostring(s_fireMis) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", o_cls: " .. tostring(o_cls) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_cls: " .. tostring(s_cls) ))
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", a_pos: " .. tostring(a_pos) ))
-                                end	
-
-                                local av_ac = deepCopy(reactionsDb) 
-
-                                -- remove not doable actions due to missin informations
-                                if s_fireMis < 1 or AI_consent == false then -- shooter position is not sufficiently recent
                                     if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, s_fireMis is 0, won't be able to call fire support"))
-                                    end	                                  
-                                    av_ac[9] = nil
-                                end 
-                                if not a_pos or not s_detected then -- enemy position unknown
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, enemy not detected, won't be able to move toward the enemy"))
-                                    end	                                  
-                                    av_ac[5] = nil
-                                end
-                                if db_group.class == "ARTY" or db_group.class == "MISSILE" or db_group.class == "MLRS" then -- group is an arty or mlrs
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, ally is an arty or mlrs, won't be able to move toward the enemy"))
-                                    end	                                  
-                                    av_ac[5] = nil
-                                end
-                                if s_cat == 0 or s_cat == 1 or s_cls == "ARBN" then -- shooter is airborne
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT, shooter is airborne, removing less sensed decision"))
-                                    end	                                  
-                                    av_ac[6] = nil -- remove attack
-                                    av_ac[8] = nil -- remove ground support
-                                    av_ac[3] = nil -- remove disperse
-                                end
-                                if s_cls ~= "ARBN" then -- shooter is not airborne
-                                    av_ac[8] = nil -- remove counter ADS
-                                end
-                                if not unit:hasAttribute("Armored vehicles") then
-                                    av_ac[4] = nil -- remove drop smoke
-                                end
-                            
-                                -- filter available actions by skill
-                                local filter = db_group.skill
-                                if AIEN.config.skill_action_const == false then
-                                    filter = filter * 2
-                                end
-
-                                for aSk, action in pairs(av_ac) do
-                                    if aSk > filter then
-                                        av_ac[aSk] = nil
-                                    end
-                                end
-                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                    env.info(("AIEN.event_hit, S_EVENT_HIT, available actions " .. tostring(#av_ac) ))
-                                end
-                                
-                                -- calculate points for each remaining actions
-                                local bc_ac = {}
-                                for _, aData in pairs(av_ac) do
-                                    local points = 0
-                                    local px1 = aData["w_cat"][w_cat] or 0
-                                    local px2 = aData["s_cat"][s_cat] or 0
-                                    local px3 = aData["s_indirect"][s_indirect] or 0
-                                    local px4 = aData["s_close"][s_close] or 0
-                                    local px5 = aData["s_fireMis"][s_fireMis] or 0
-                                    local px6 = aData["o_cls"][o_cls] or 0
-                                    local px7 = aData["s_cls"][s_cls] or 0
-
-                                    points = px1 + px2 + px3 + px4 + px5 + px6 + px7 
-                                    if AIEN.config.AIEN_debugProcessDetail == true then
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for w_cat: " .. tostring(aData["w_cat"][w_cat])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_cat: " .. tostring(aData["s_cat"][s_cat])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_indirect: " .. tostring(aData["s_indirect"][s_indirect])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_close: " .. tostring(aData["s_close"][s_close])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_fireMis: " .. tostring(aData["s_fireMis"][s_fireMis])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for o_cls: " .. tostring(aData["o_cls"][o_cls])))
-                                        --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_cls: " .. tostring(aData["s_cls"][s_cls])))
-                                        env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points total: " .. tostring(points)))
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", w_cat: " .. tostring(w_cat) ))
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_cat: " .. tostring(s_cat) ))
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_indirect: " .. tostring(s_indirect) ))
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_close: " .. tostring(s_close) ))
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_fireMis: " .. tostring(s_fireMis) ))
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", o_cls: " .. tostring(o_cls) ))
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", s_cls: " .. tostring(s_cls) ))
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", a_pos: " .. tostring(a_pos) ))
                                     end	
 
-                                    bc_ac[#bc_ac+1] = {name = aData.name, action = aData.action, rank = points}
-                                end
-                                table.sort(bc_ac, function(a,b)
-                                    if a.rank and b.rank then
-                                        return a.rank > b.rank 
+                                    local av_ac = deepCopy(reactionsDb) 
+
+                                    -- remove not doable actions due to missin informations
+                                    if s_fireMis < 1 or AI_consent == false then -- shooter position is not sufficiently recent
+                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, s_fireMis is 0, won't be able to call fire support"))
+                                        end	                                  
+                                        av_ac[9] = nil
+                                    end 
+                                    if not a_pos or not s_detected then -- enemy position unknown
+                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, enemy not detected, won't be able to move toward the enemy"))
+                                        end	                                  
+                                        av_ac[5] = nil
                                     end
-                                end)
+                                    if db_group.class == "ARTY" or db_group.class == "MISSILE" or db_group.class == "MLRS" then -- group is an arty or mlrs
+                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, ally is an arty or mlrs, won't be able to move toward the enemy"))
+                                        end	                                  
+                                        av_ac[5] = nil
+                                    end
+                                    if s_cat == 0 or s_cat == 1 or s_cls == "ARBN" then -- shooter is airborne
+                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT, shooter is airborne, removing less sensed decision"))
+                                        end	                                  
+                                        av_ac[6] = nil -- remove attack
+                                        av_ac[8] = nil -- remove ground support
+                                        av_ac[3] = nil -- remove disperse
+                                    end
+                                    if s_cls ~= "ARBN" then -- shooter is not airborne
+                                        av_ac[9] = nil -- remove cover ADS
+                                    end
+                                    if not unit:hasAttribute("Armored vehicles") then
+                                        av_ac[4] = nil -- remove drop smoke
+                                    end
+                                
+                                    -- filter available actions by skill
+                                    local filter = db_group.skill
+                                    if AIEN.config.skill_action_const == false then
+                                        filter = filter * 2
+                                    end
 
-                                -- record the attack, for preventing phases to act for 10 mins
-                                underAttack[group:getID()] = timer.getTime()
+                                    for aSk, action in pairs(av_ac) do
+                                        if aSk > filter then
+                                            av_ac[aSk] = nil
+                                        end
+                                    end
+                                    if AIEN.config.AIEN_debugProcessDetail == true then
+                                        env.info(("AIEN.event_hit, S_EVENT_HIT, available actions " .. tostring(#av_ac) ))
+                                    end
+                                    
+                                    -- calculate points for each remaining actions
+                                    local bc_ac = {}
+                                    for _, aData in pairs(av_ac) do
+                                        local points = 0
+                                        local px1 = aData["w_cat"][w_cat] or 0
+                                        local px2 = aData["s_cat"][s_cat] or 0
+                                        local px3 = aData["s_indirect"][s_indirect] or 0
+                                        local px4 = aData["s_close"][s_close] or 0
+                                        local px5 = aData["s_fireMis"][s_fireMis] or 0
+                                        local px6 = aData["o_cls"][o_cls] or 0
+                                        local px7 = aData["s_cls"][s_cls] or 0
 
-                                choosenAct = executeReactions(group, o_pos, a_pos, bc_ac, db_group.sa, db_group.skill)
+                                        points = px1 + px2 + px3 + px4 + px5 + px6 + px7 
+                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                            --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for w_cat: " .. tostring(aData["w_cat"][w_cat])))
+                                            --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_cat: " .. tostring(aData["s_cat"][s_cat])))
+                                            --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_indirect: " .. tostring(aData["s_indirect"][s_indirect])))
+                                            --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_close: " .. tostring(aData["s_close"][s_close])))
+                                            --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_fireMis: " .. tostring(aData["s_fireMis"][s_fireMis])))
+                                            --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for o_cls: " .. tostring(aData["o_cls"][o_cls])))
+                                            --env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points for s_cls: " .. tostring(aData["s_cls"][s_cls])))
+                                            env.info(("AIEN.event_hit, S_EVENT_HIT," .. tostring(aData.name) ..  ", points total: " .. tostring(points)))
+                                        end	
+
+                                        bc_ac[#bc_ac+1] = {name = aData.name, action = aData.action, rank = points}
+                                    end
+                                    table.sort(bc_ac, function(a,b)
+                                        if a.rank and b.rank then
+                                            return a.rank > b.rank 
+                                        end
+                                    end)
+
+                                    -- record the attack, for preventing phases to act for 10 mins
+                                    underAttack[group:getID()] = timer.getTime()
+
+                                    choosenAct = executeReactions(group, o_pos, a_pos, bc_ac, db_group.sa, db_group.skill)
+
+                                end
 
                             end
-
                         end
 
                         -- counter battery part
@@ -13990,8 +13992,7 @@ local function event_hit(unit, shooter, weapon) -- this functions run eacht time
                 env.info(("AIEN.event_hit, either shooter or unit are not valid units"))
             end	                
         end
-    end
-
+    --end
 end
 
 local function event_birth(initiator)
