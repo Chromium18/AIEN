@@ -60,7 +60,7 @@ AIEN.config.redAI			    = true 		-- true/false. If true, the AI enhancement will
 AIEN.config.firemissions        = true      -- true/false. If true, each artillery in the coalition will fire automatically at available targets provided by other ground units and drones
 AIEN.config.reactions           = true      -- true/false. If true, when a mover group gets an hit, it will react accordingly to its skills and to its situational awareness, not staying there taking hits without doing nothing
 AIEN.config.suppression         = true      -- true/false. If true, once a group take fire from arty or air and it's not armoured, it will be suppressed for 15-45 seconds and won't return fire. Require reactions to be set as 'true'
-AIEN.config.dismount 		    = true 		-- true/false. //BEWARE: CAN AFFECT PERFORMANCES ON LOW END SYSTEMS // Thanks to MBot's original script, if true AI ground units with infantry transport capabilities (mainly APC/IFV/Trucks) will dismount soldiers with rifle, rpg and sometimes mandpads when appropriate
+AIEN.config.dismount 		    = false 	-- true/false. //BEWARE: CAN AFFECT PERFORMANCES ON LOW END SYSTEMS // Thanks to MBot's original script, if true AI ground units with infantry transport capabilities (mainly APC/IFV/Trucks) will dismount soldiers with rifle, rpg and sometimes mandpads when appropriate
 AIEN.config.initiative 		    = true 		-- true/false. If true, the ground groups will take limited initiative of attack or advance if intel and terrain allow them
 --AIEN.config.conquer 		    = true 		-- true/false. If true, the ground groups will look for nearby towns or DCS ground markers and will try to move there if intel and terrain allow them (this is limited in space cause it's designed to work appropriately with DSMC 2)
 
@@ -143,8 +143,8 @@ end
 local ModuleName  						= "AIEN"
 local MainVersion 						= "1"
 local SubVersion 						= "4"
-local Build 							= "0184"
-local Date								= "2025.11.05"
+local Build 							= "0191"
+local Date								= "2025.12.08"
 
 --## LOCAL LOW LEVEL VARIABLES
 
@@ -9782,11 +9782,12 @@ local function groupfireAtPoint(var)
         if AIEN.config.AIEN_debugProcessDetail == true then
             env.info((tostring(ModuleName) .. ", groupfireAtPoint group name: " .. tostring(group:getName())))
         end	
-        local gController = group:getController()
-        local vec3 = vec3Check(var[2])
-        local qty = var[3]
-        local desc = var[4]
-        local radi = var[5]
+        local gController   = group:getController()
+        local vec3          = vec3Check(var[2])
+        local qty           = var[3]
+        local desc          = var[4]
+        local radi          = var[5]
+        local skmsg         = var[6]
 
         if gController and vec3 then
             if AIEN.config.AIEN_debugProcessDetail == true then
@@ -9825,7 +9826,7 @@ local function groupfireAtPoint(var)
             end
             
             -- message feedback
-            if AIEN.config.message_feed == true then
+            if AIEN.config.message_feed == true and skmsg == false then
 
                 local lat, lon = coord.LOtoLL(vec3)
                 local MGRS = coord.LLtoMGRS(coord.LOtoLL(vec3))
@@ -12902,7 +12903,7 @@ local function check_CTLD_CSAR()
             env.info(("AIEN.check_CTLD_CSAR, identified CTLD or CSAR script being active, disabling AIEN dismount feature to prevent issues"))
             mountedDb         = {}
             infcarrierDb      = {}
-            --trigger.action.outText("AIEN information: identified CTLD or CSAR script being active, disabling AIEN dismount feature to prevent issues", 20)
+            trigger.action.outText("AIEN information: identified CTLD or CSAR script being active, disabling AIEN dismount feature to prevent issues", 20)
         end
     end
 end
@@ -13167,7 +13168,13 @@ local function update_ARTY()
                                                                 if fData.id then
                                                                     description = "Target is " .. tostring(fData.id)
                                                                 end
-                                                                groupfireAtPoint({gData.group, fData.p, 1, description})
+
+                                                                local skip = nil
+                                                                if fId == 1 then
+                                                                    skip = true
+                                                                end
+
+                                                                groupfireAtPoint({gData.group, fData.p, 1, description, nil, skip})
 
                                                                 if intelDb[fData.o] then
                                                                     intelDb[fData.o].targeted = timer.getTime()
@@ -13344,17 +13351,13 @@ local function update_INITIATIVE()
                                         if gData.group and gData.group:isExist() == true then
                                             if gData.sa and gData.sa.pos then
                                                 if gData.tasked == false then
-                                                    if gData.class == "MBT" or gData.class == "ATGM" or gData.class == "IFV" or gData.class == "APC" or gData.class == "RECCE" then -- find another way for indirect fire groups?
+                                                    if gData.class == "MBT" or gData.class == "ATGM" or gData.class == "IFV" or gData.class == "APC" then 
                                                         --if AIEN.config.AIEN_debugProcessDetail then
                                                         --    env.info((tostring(ModuleName) .. ", update_INITIATIVE: group " .. tostring(gData.n) .. " is in contact with enemy, evaluating direct threat"))
                                                         --end  
 
                                                         if gData.sa and gData.sa.str > 3 then
                                                             if gData.sa.targets and gData.sa.targets ~= {} then
-
-                                                                if gData.n == "Blue_MBT_2" then
-                                                                    dumpTableAIEN("Blue_MBT_2_targets.lua", gData.sa.targets, "int")
-                                                                end
 
                                                                 local nearestDist = AIEN.config.initiativeRange or 10000 -- default value
                                                                 local nearest       = nil -- data of the group in groundgroupsDb, not the object
